@@ -41,7 +41,7 @@ const FlowCalculate = () => {
   };
 
   // Function to generate efficiency values by interpolating between input points
-  // For the 5 sample points (65, 70, 72, 70, 63), they appear at indices 0, 24, 49, 74, 99
+  // For the 5 sample points (65, 70, 72, 70, 63), the pattern appears every 100 points
   const generateInterpolatedEfficiency = (index, validPoints) => {
     // Default efficiency values in case we don't have enough input data
     const defaultEfficiencies = [65, 70, 72, 70, 63];
@@ -58,48 +58,45 @@ const FlowCalculate = () => {
       efficiencies = defaultEfficiencies;
     }
     
-    // The index coming in is 0-based, but we want to work with 1-based positions for clarity
-    // Convert to 1-based index for user-friendly display
-    const displayIndex = index + 1;
+    // Calculate which group of 100 this point belongs to (0-9)
+    const groupIndex = Math.floor(index / 100);
     
-    // Define the key point positions (1-based indexing for clarity)
-    const keyPoints = [1, 25, 50, 75, 100];
+    // Calculate the position within the current group (0-99)
+    const positionInGroup = index % 100;
     
-    // Check if this display index is a key point, return exact value if it is
-    const keyPointIndex = keyPoints.indexOf(displayIndex);
+    // Convert to 1-based index for display (1-100)
+    const displayPositionInGroup = positionInGroup + 1;
+    
+    // Define the key point positions within each group (1-based indexing)
+    const keyPointsInGroup = [1, 25, 50, 75, 100];
+    
+    // Check if this position is a key point within its group
+    const keyPointIndex = keyPointsInGroup.indexOf(displayPositionInGroup);
     if (keyPointIndex !== -1 && keyPointIndex < efficiencies.length) {
       return efficiencies[keyPointIndex].toFixed(4);
     }
     
-    // For interpolation, determine which segment this index is in
+    // Fixed step sizes for each segment as specified in the original 100-point calculation
+    const stepSizes = [0.2083, 0.0833, -0.0833, -0.2917];
+    
+    // For interpolation, determine which segment this position is in
     let segmentIndex = 0;
-    for (let i = 1; i < keyPoints.length; i++) {
-      if (displayIndex < keyPoints[i]) {
+    for (let i = 1; i < keyPointsInGroup.length; i++) {
+      if (displayPositionInGroup < keyPointsInGroup[i]) {
         segmentIndex = i - 1;
         break;
       }
     }
     
-    // Get the start and end values and positions for this segment
-    const startIndex = keyPoints[segmentIndex];
-    const endIndex = keyPoints[segmentIndex + 1];
+    // Get the start value and position for this segment
+    const startIndex = keyPointsInGroup[segmentIndex];
     const startValue = efficiencies[segmentIndex];
-    const endValue = efficiencies[segmentIndex + 1];
     
-    // Calculate how many points are in this segment (excluding endpoints)
-    const pointsInSegment = endIndex - startIndex - 1;
+    // Calculate the position in the segment (0-based within segment)
+    const positionInSegment = displayPositionInGroup - startIndex;
     
-    // Calculate the total change in value across segment
-    const valueChange = endValue - startValue;
-    
-    // Calculate the value step per point
-    const step = valueChange / (pointsInSegment + 1);
-    
-    // Calculate the points position in the segment (1-based within segment)
-    const positionInSegment = displayIndex - startIndex;
-    
-    // Calculate and return the interpolated value
-    const interpolatedValue = startValue + (step * positionInSegment);
+    // Calculate value using the fixed step size
+    const interpolatedValue = startValue + (stepSizes[segmentIndex] * positionInSegment);
     return interpolatedValue.toFixed(4);
   };
 
@@ -195,7 +192,7 @@ const FlowCalculate = () => {
     };
   };
 
-  // Function to generate 100 points with uniform increments in both flow rate and pressure
+  // Function to generate 1000 points with uniform increments in both flow rate and pressure
   const generatePoints = (coefficients, points) => {
     // Find min and max from valid points
     const validPoints = points.filter(point => 
@@ -219,14 +216,14 @@ const FlowCalculate = () => {
     const rpm = firstPoint.rpm || 900; // Default to 900 if not provided
     
     // Calculate step size for uniform flow rate increments
-    // We need to create exactly 100 points, so the step is for 99 intervals
-    const flowStep = (maxFlow - minFlow) / 99; // 99 steps for 100 points
+    // We need to create exactly 1000 points, so the step is for 999 intervals
+    const flowStep = (maxFlow - minFlow) / 999; // 999 steps for 1000 points
     
     console.log(`------------------------------------------------------`);
     console.log(`Generating points from:`);
     console.log(`First point: Flow Rate = ${minFlow}`);
     console.log(`Last point: Flow Rate = ${maxFlow}`);
-    console.log(`Using RPM = ${rpm} for all 100 points`);
+    console.log(`Using RPM = ${rpm} for all 1000 points`);
     console.log(`Flow Rate Step: ${flowStep}`);
     
     if (coefficients && coefficients.a !== undefined) {
@@ -236,7 +233,7 @@ const FlowCalculate = () => {
       console.log(`No valid quadratic coefficients found, will use linear interpolation between points`);
     }
     
-    console.log(`Efficiency will be interpolated between input points with key points at positions 1, 25, 50, 75, 100`);
+    console.log(`Efficiency will be interpolated between input points with key points at positions 1, 250, 500, 750, 1000`);
     console.log(`------------------------------------------------------`);
     
     // Calculate constants for velocity formula: velocity = 4 * flowRate / (π * 0.63²)
@@ -251,14 +248,14 @@ const FlowCalculate = () => {
     
     console.log(`Input efficiency values for interpolation at key points:`);
     sortedPoints.forEach((point, idx) => {
-      console.log(`Key Point ${idx + 1} (position ${[1, 25, 50, 75, 100][idx]}): ${point.efficiency}%`);
+      console.log(`Key Point ${idx + 1} (position ${[1, 250, 500, 750, 1000][idx]}): ${point.efficiency}%`);
     });
     console.log(`------------------------------------------------------`);
     
-    // Generate 100 equally spaced points
+    // Generate 1000 equally spaced points
     const generatedPoints = [];
 
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 1000; i++) {
       // Calculate flow rate with uniform increments
       const flowRate = minFlow + (flowStep * i);
       
@@ -273,7 +270,7 @@ const FlowCalculate = () => {
         // Fallback to linear interpolation if no coefficients
         const minPressure = parseFloat(firstPoint.totalPressure);
         const maxPressure = parseFloat(lastPoint.totalPressure);
-        const pressureStep = (maxPressure - minPressure) / 99;
+        const pressureStep = (maxPressure - minPressure) / 999;
         totalPressure = minPressure + (pressureStep * i);
       }
       
@@ -287,8 +284,8 @@ const FlowCalculate = () => {
       const efficiencyDecimal = parseFloat(efficiency) / 100;
       const brakePower = (flowRate * totalPressure) / (efficiencyDecimal * 1000);
       
-      // Log sample calculations
-      if (i === 0 || i === 24 || i === 49 || i === 74 || i === 99) {
+      // Log sample calculations for key points only
+      if (i === 0 || i === 249 || i === 499 || i === 749 || i === 999) {
         console.log(`Key point ${i+1}: RPM=${rpm}, Flow=${flowRate.toFixed(6)}, Total Pressure=${totalPressure.toFixed(6)}, Velocity=${velocity.toFixed(6)}, Efficiency=${efficiency}, Brake Power=${brakePower.toFixed(6)}`);
       }
       
@@ -302,7 +299,7 @@ const FlowCalculate = () => {
       });
     }
 
-    // Verification that we have exactly 100 points
+    // Verification that we have exactly 1000 points
     console.log(`Generated ${generatedPoints.length} points.`);
     
     return generatedPoints;
@@ -377,7 +374,7 @@ const FlowCalculate = () => {
         setQuadraticCoefficients(coeffs);
       }
       
-      // Generate 100 points with uniform increments
+      // Generate 1000 points with uniform increments
       const points = generatePoints(coeffs, dataPoints);
       setCalculatedPoints(points);
       
@@ -588,35 +585,35 @@ const FlowCalculate = () => {
               <br />
               <span className="text-sm text-gray-600">Where y is Total Pressure and x is Flow Rate</span>
               <br />
-              <span className="text-sm text-gray-600">The 100 generated points follow this equation exactly</span>
+              <span className="text-sm text-gray-600">The 1000 generated points follow this equation exactly</span>
             </p>
           )}
           
           <p className="mb-4">
-            <strong>Generated Points:</strong> 100 points with uniform increments in both Flow Rate and Total Pressure between the first and last input points.
+            <strong>Generated Points:</strong> 1000 points with uniform increments in both Flow Rate and Total Pressure between the first and last input points.
             <br />
             <strong>Velocity Formula:</strong> velocity = 4 × flowRate / (π × 0.63²)
             <br />
-            <strong>Efficiency Values:</strong> Exact input values at key points (1, 25, 50, 75, 100) with linear interpolation in between:
+            <strong>Efficiency Values:</strong> The efficiency calculation pattern repeats every 100 points:
             <br />
             <span className="text-sm pl-4 block">
-              Point 1: Exactly {parseFloat(dataPoints[0]?.efficiency || 65).toFixed(4)}%
+              Points 1, 101, 201, ..., 901: Exactly {parseFloat(dataPoints[0]?.efficiency || 65).toFixed(4)}%
               <br />
-              Points 2-24: Linear interpolation between {parseFloat(dataPoints[0]?.efficiency || 65).toFixed(4)}% and {parseFloat(dataPoints[1]?.efficiency || 70).toFixed(4)}%
+              Points 2-24, 102-124, ..., 902-924: Linear steps of 0.2083% per point
               <br />
-              Point 25: Exactly {parseFloat(dataPoints[1]?.efficiency || 70).toFixed(4)}%
+              Points 25, 125, 225, ..., 925: Exactly {parseFloat(dataPoints[1]?.efficiency || 70).toFixed(4)}%
               <br />
-              Points 26-49: Linear interpolation between {parseFloat(dataPoints[1]?.efficiency || 70).toFixed(4)}% and {parseFloat(dataPoints[2]?.efficiency || 72).toFixed(4)}%
+              Points 26-49, 126-149, ..., 926-949: Linear steps of 0.0833% per point
               <br />
-              Point 50: Exactly {parseFloat(dataPoints[2]?.efficiency || 72).toFixed(4)}%
+              Points 50, 150, 250, ..., 950: Exactly {parseFloat(dataPoints[2]?.efficiency || 72).toFixed(4)}%
               <br />
-              Points 51-74: Linear interpolation between {parseFloat(dataPoints[2]?.efficiency || 72).toFixed(4)}% and {parseFloat(dataPoints[3]?.efficiency || 70).toFixed(4)}%
+              Points 51-74, 151-174, ..., 951-974: Linear steps of -0.0833% per point
               <br />
-              Point 75: Exactly {parseFloat(dataPoints[3]?.efficiency || 70).toFixed(4)}%
+              Points 75, 175, 275, ..., 975: Exactly {parseFloat(dataPoints[3]?.efficiency || 70).toFixed(4)}%
               <br />
-              Points 76-99: Linear interpolation between {parseFloat(dataPoints[3]?.efficiency || 70).toFixed(4)}% and {parseFloat(dataPoints[4]?.efficiency || 63).toFixed(4)}%
+              Points 76-99, 176-199, ..., 976-999: Linear steps of -0.2917% per point
               <br />
-              Point 100: Exactly {parseFloat(dataPoints[4]?.efficiency || 63).toFixed(4)}%
+              Points 100, 200, 300, ..., 1000: Exactly {parseFloat(dataPoints[4]?.efficiency || 63).toFixed(4)}%
             </span>
           </p>
           
@@ -658,11 +655,12 @@ const FlowCalculate = () => {
             </div>
           </div>
           
-          <h4 className="text-lg font-semibold mb-2">Generated 100 Points:</h4>
+          <h4 className="text-lg font-semibold mb-2">Generated 1000 Points:</h4>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
             <table className="min-w-full bg-white border rounded-lg">
               <thead className="sticky top-0 bg-gray-200">
                 <tr>
+                  <th className="py-2 px-4 border-b">Point</th>
                   <th className="py-2 px-4 border-b">RPM</th>
                   <th className="py-2 px-4 border-b">Flow Rate</th>
                   <th className="py-2 px-4 border-b">Total Pressure</th>
@@ -674,6 +672,7 @@ const FlowCalculate = () => {
               <tbody>
                 {calculatedPoints.map((point, index) => (
                   <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                    <td className="py-1 px-4 border-b text-center font-medium">{index + 1}</td>
                     <td className="py-1 px-4 border-b">{point.rpm}</td>
                     <td className="py-1 px-4 border-b">{point.flowRate}</td>
                     <td className="py-1 px-4 border-b">{point.totalPressure}</td>
@@ -714,6 +713,7 @@ const FlowCalculate = () => {
                     <table className="min-w-full bg-white border rounded-lg">
                       <thead className="sticky top-0 bg-gray-200">
                         <tr>
+                          <th className="py-2 px-4 border-b">Point</th>
                           <th className="py-2 px-4 border-b">RPM</th>
                           <th className="py-2 px-4 border-b">Flow Rate</th>
                           <th className="py-2 px-4 border-b">Total Pressure</th>
@@ -725,6 +725,7 @@ const FlowCalculate = () => {
                       <tbody>
                         {nextRpmPoints.map((point, index) => (
                           <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+                            <td className="py-1 px-4 border-b text-center font-medium">{index + 1}</td>
                             <td className="py-1 px-4 border-b">{point.rpm}</td>
                             <td className="py-1 px-4 border-b">{point.flowRate}</td>
                             <td className="py-1 px-4 border-b">{point.totalPressure}</td>
