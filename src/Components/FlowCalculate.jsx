@@ -41,7 +41,7 @@ const FlowCalculate = () => {
   };
 
   // Function to generate efficiency values by interpolating between input points
-  // For the 5 sample points (65, 70, 72, 70, 63), the pattern appears every 100 points
+  // For the 5 sample points (65, 70, 72, 70, 63), they appear at indices 0, 249, 499, 749, 999
   const generateInterpolatedEfficiency = (index, validPoints) => {
     // Default efficiency values in case we don't have enough input data
     const defaultEfficiencies = [65, 70, 72, 70, 63];
@@ -58,44 +58,39 @@ const FlowCalculate = () => {
       efficiencies = defaultEfficiencies;
     }
     
-    // Calculate which group of 100 this point belongs to (0-9)
-    const groupIndex = Math.floor(index / 100);
+    // The index coming in is 0-based, but we want to work with 1-based positions for clarity
+    // Convert to 1-based index for user-friendly display
+    const displayIndex = index + 1;
     
-    // Calculate the position within the current group (0-99)
-    const positionInGroup = index % 100;
+    // Define the key point positions (1-based indexing for clarity)
+    const keyPoints = [1, 250, 500, 750, 1000];
     
-    // Convert to 1-based index for display (1-100)
-    const displayPositionInGroup = positionInGroup + 1;
-    
-    // Define the key point positions within each group (1-based indexing)
-    const keyPointsInGroup = [1, 25, 50, 75, 100];
-    
-    // Check if this position is a key point within its group
-    const keyPointIndex = keyPointsInGroup.indexOf(displayPositionInGroup);
+    // Check if this display index is a key point, return exact value if it is
+    const keyPointIndex = keyPoints.indexOf(displayIndex);
     if (keyPointIndex !== -1 && keyPointIndex < efficiencies.length) {
       return efficiencies[keyPointIndex].toFixed(4);
     }
     
-    // Fixed step sizes for each segment as specified in the original 100-point calculation
-    const stepSizes = [0.2083, 0.0833, -0.0833, -0.2917];
+    // Fixed step sizes for each segment as specified
+    const stepSizes = [0.020080, 0.008032, -0.008032, -0.028112];
     
-    // For interpolation, determine which segment this position is in
+    // For interpolation, determine which segment this index is in
     let segmentIndex = 0;
-    for (let i = 1; i < keyPointsInGroup.length; i++) {
-      if (displayPositionInGroup < keyPointsInGroup[i]) {
+    for (let i = 1; i < keyPoints.length; i++) {
+      if (displayIndex < keyPoints[i]) {
         segmentIndex = i - 1;
         break;
       }
     }
     
     // Get the start value and position for this segment
-    const startIndex = keyPointsInGroup[segmentIndex];
+    const startIndex = keyPoints[segmentIndex];
     const startValue = efficiencies[segmentIndex];
     
-    // Calculate the position in the segment (0-based within segment)
-    const positionInSegment = displayPositionInGroup - startIndex;
+    // Calculate the points position in the segment (0-based within segment)
+    const positionInSegment = displayIndex - startIndex;
     
-    // Calculate value using the fixed step size
+    // Calculate and return the interpolated value
     const interpolatedValue = startValue + (stepSizes[segmentIndex] * positionInSegment);
     return interpolatedValue.toFixed(4);
   };
@@ -594,26 +589,26 @@ const FlowCalculate = () => {
             <br />
             <strong>Velocity Formula:</strong> velocity = 4 × flowRate / (π × 0.63²)
             <br />
-            <strong>Efficiency Values:</strong> The efficiency calculation pattern repeats every 100 points:
+            <strong>Efficiency Values:</strong> Exact input values at key points with linear interpolation in between:
             <br />
             <span className="text-sm pl-4 block">
-              Points 1, 101, 201, ..., 901: Exactly {parseFloat(dataPoints[0]?.efficiency || 65).toFixed(4)}%
+              Point 1: Exactly {parseFloat(dataPoints[0]?.efficiency || 65).toFixed(4)}%
               <br />
-              Points 2-24, 102-124, ..., 902-924: Linear steps of 0.2083% per point
+              Points 2-249: Linear steps of 0.020080% per point
               <br />
-              Points 25, 125, 225, ..., 925: Exactly {parseFloat(dataPoints[1]?.efficiency || 70).toFixed(4)}%
+              Point 250: Exactly {parseFloat(dataPoints[1]?.efficiency || 70).toFixed(4)}%
               <br />
-              Points 26-49, 126-149, ..., 926-949: Linear steps of 0.0833% per point
+              Points 251-499: Linear steps of 0.008032% per point
               <br />
-              Points 50, 150, 250, ..., 950: Exactly {parseFloat(dataPoints[2]?.efficiency || 72).toFixed(4)}%
+              Point 500: Exactly {parseFloat(dataPoints[2]?.efficiency || 72).toFixed(4)}%
               <br />
-              Points 51-74, 151-174, ..., 951-974: Linear steps of -0.0833% per point
+              Points 501-749: Linear steps of -0.008032% per point
               <br />
-              Points 75, 175, 275, ..., 975: Exactly {parseFloat(dataPoints[3]?.efficiency || 70).toFixed(4)}%
+              Point 750: Exactly {parseFloat(dataPoints[3]?.efficiency || 70).toFixed(4)}%
               <br />
-              Points 76-99, 176-199, ..., 976-999: Linear steps of -0.2917% per point
+              Points 751-999: Linear steps of -0.028112% per point
               <br />
-              Points 100, 200, 300, ..., 1000: Exactly {parseFloat(dataPoints[4]?.efficiency || 63).toFixed(4)}%
+              Point 1000: Exactly {parseFloat(dataPoints[4]?.efficiency || 63).toFixed(4)}%
             </span>
           </p>
           
