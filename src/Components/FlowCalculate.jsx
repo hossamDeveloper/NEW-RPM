@@ -214,23 +214,28 @@ const FlowCalculate = () => {
     
     const minFlow = parseFloat(firstPoint.flowRate);
     const maxFlow = parseFloat(lastPoint.flowRate);
-    const minPressure = parseFloat(firstPoint.totalPressure);
-    const maxPressure = parseFloat(lastPoint.totalPressure);
     
     // Get the RPM value from the first valid point (assuming all points have the same RPM)
     const rpm = firstPoint.rpm || 900; // Default to 900 if not provided
     
-    // Calculate step sizes for uniform increments
+    // Calculate step size for uniform flow rate increments
     // We need to create exactly 100 points, so the step is for 99 intervals
     const flowStep = (maxFlow - minFlow) / 99; // 99 steps for 100 points
-    const pressureStep = (maxPressure - minPressure) / 99;
     
     console.log(`------------------------------------------------------`);
     console.log(`Generating points from:`);
-    console.log(`First point: Flow Rate = ${minFlow}, Total Pressure = ${minPressure}`);
-    console.log(`Last point: Flow Rate = ${maxFlow}, Total Pressure = ${maxPressure}`);
+    console.log(`First point: Flow Rate = ${minFlow}`);
+    console.log(`Last point: Flow Rate = ${maxFlow}`);
     console.log(`Using RPM = ${rpm} for all 100 points`);
-    console.log(`Step sizes: Flow Rate = ${flowStep}, Total Pressure = ${pressureStep}`);
+    console.log(`Flow Rate Step: ${flowStep}`);
+    
+    if (coefficients && coefficients.a !== undefined) {
+      console.log(`Using quadratic equation: y = ${coefficients.a.toFixed(6)}x² + ${coefficients.b.toFixed(6)}x + ${coefficients.c.toFixed(6)}`);
+      console.log(`Where y is Total Pressure and x is Flow Rate`);
+    } else {
+      console.log(`No valid quadratic coefficients found, will use linear interpolation between points`);
+    }
+    
     console.log(`Efficiency will be interpolated between input points with key points at positions 1, 25, 50, 75, 100`);
     console.log(`------------------------------------------------------`);
     
@@ -254,9 +259,23 @@ const FlowCalculate = () => {
     const generatedPoints = [];
 
     for (let i = 0; i < 100; i++) {
-      // Calculate flow rate and pressure with uniform increments
+      // Calculate flow rate with uniform increments
       const flowRate = minFlow + (flowStep * i);
-      const totalPressure = minPressure + (pressureStep * i);
+      
+      // Calculate total pressure using quadratic equation if coefficients are available
+      let totalPressure;
+      if (coefficients && coefficients.a !== undefined) {
+        // Use the quadratic equation: y = ax² + bx + c where x is flow rate and y is total pressure
+        totalPressure = (coefficients.a * flowRate * flowRate) + 
+                         (coefficients.b * flowRate) + 
+                         coefficients.c;
+      } else {
+        // Fallback to linear interpolation if no coefficients
+        const minPressure = parseFloat(firstPoint.totalPressure);
+        const maxPressure = parseFloat(lastPoint.totalPressure);
+        const pressureStep = (maxPressure - minPressure) / 99;
+        totalPressure = minPressure + (pressureStep * i);
+      }
       
       // Calculate velocity using the formula: velocity = 4 * flowRate / (π * 0.63²)
       const velocity = VELOCITY_CONSTANT * flowRate;
@@ -270,7 +289,7 @@ const FlowCalculate = () => {
       
       // Log sample calculations
       if (i === 0 || i === 24 || i === 49 || i === 74 || i === 99) {
-        console.log(`Key point ${i+1}: RPM=${rpm}, Flow=${flowRate.toFixed(6)}, Velocity=${velocity.toFixed(6)}, Efficiency=${efficiency}, Brake Power=${brakePower.toFixed(6)}`);
+        console.log(`Key point ${i+1}: RPM=${rpm}, Flow=${flowRate.toFixed(6)}, Total Pressure=${totalPressure.toFixed(6)}, Velocity=${velocity.toFixed(6)}, Efficiency=${efficiency}, Brake Power=${brakePower.toFixed(6)}`);
       }
       
       generatedPoints.push({
@@ -568,6 +587,8 @@ const FlowCalculate = () => {
               <strong>Quadratic Equation:</strong> y = {quadraticCoefficients.a.toFixed(6)}x² + {quadraticCoefficients.b.toFixed(6)}x + {quadraticCoefficients.c.toFixed(6)}
               <br />
               <span className="text-sm text-gray-600">Where y is Total Pressure and x is Flow Rate</span>
+              <br />
+              <span className="text-sm text-gray-600">The 100 generated points follow this equation exactly</span>
             </p>
           )}
           
