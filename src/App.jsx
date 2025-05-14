@@ -1,5 +1,5 @@
 import { useState } from "react";
-import FlowCalculate from "./components/FlowCalculate";
+import FlowCalculate from "./components/FlowCalculate.jsx";
 
 function App() {
   return (
