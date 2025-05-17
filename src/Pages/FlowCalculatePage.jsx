@@ -1,5 +1,5 @@
 import React from 'react';
-import FlowCalculate from '../components/FlowCalculate';
+import FlowCalculate from '../Components/FlowCalculate';
 
 const FlowCalculatePage = () => {
   return (
