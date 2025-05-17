@@ -299,51 +299,34 @@ const FlowCalculate = () => {
     const rpmRatio = newRpm / currentRpm;
     const pressureRatio = Math.pow(rpmRatio, 2);
     
-    // Get the range of flow rates from base points
-    const firstPoint = basePoints[0];
-    const lastPoint = basePoints[basePoints.length - 1];
-    const minFlow = parseFloat(firstPoint.flowRate);
-    const maxFlow = parseFloat(lastPoint.flowRate);
-    const flowStep = (maxFlow - minFlow) / 999;
-    
     const newPoints = [];
     // Correct velocity constant calculation
     const DIAMETER = 0.63; // diameter in meters
     const velocityConstant = 4 / (Math.PI * Math.pow(DIAMETER, 2));
     
+    // Apply scaling laws to each of the 1000 base points
     for (let i = 0; i < 1000; i++) {
-      // Calculate base flow rate
-      const baseFlowRate = minFlow + (flowStep * i);
+      const basePoint = basePoints[i];
       
-      // Scale flow rate by RPM ratio
-      const scaledFlowRate = baseFlowRate * rpmRatio;
-      
-      // Find the corresponding base pressure
-      const basePoint = basePoints.find(point => 
-        Math.abs(parseFloat(point.flowRate) - baseFlowRate) < flowStep / 2
-      ) || basePoints[Math.floor(i * (basePoints.length - 1) / 999)];
-      
-      // Scale pressure by RPM ratio squared
-      const scaledPressure = parseFloat(basePoint.totalPressure) * pressureRatio;
+      // Apply scaling laws
+      const flowRate = parseFloat(basePoint.flowRate) * rpmRatio;
+      const totalPressure = parseFloat(basePoint.totalPressure) * pressureRatio;
+      const efficiency = parseFloat(basePoint.efficiency);
       
       // Calculate velocity using the scaled flow rate
-      const newVelocity = scaledFlowRate * velocityConstant;
+      const velocity = flowRate * velocityConstant;
       
-      // Get efficiency from base point
-      const newEfficiency = parseFloat(basePoint.efficiency);
-      
-      // Calculate brake power using the same formula as base points
-      // Power = (Flow rate × total pressure) / (efficiency/100 × 1000)
-      const efficiencyDecimal = newEfficiency / 100;
-      const newBrakePower = (scaledFlowRate * scaledPressure) / (efficiencyDecimal * 1000);
+      // Calculate brake power using the scaled values
+      const efficiencyDecimal = efficiency / 100;
+      const brakePower = (flowRate * totalPressure) / (efficiencyDecimal * 1000);
       
       newPoints.push({
         rpm: newRpm,
-        flowRate: Number(scaledFlowRate).toFixed(6),
-        totalPressure: Number(scaledPressure).toFixed(6),
-        velocity: Number(newVelocity).toFixed(6),
-        efficiency: Number(newEfficiency).toFixed(4),
-        brakePower: Number(newBrakePower).toFixed(6)
+        flowRate: Number(flowRate).toFixed(6),
+        totalPressure: Number(totalPressure).toFixed(6),
+        velocity: Number(velocity).toFixed(6),
+        efficiency: Number(efficiency).toFixed(4),
+        brakePower: Number(brakePower).toFixed(6)
       });
     }
     
