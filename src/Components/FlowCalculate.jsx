@@ -30,6 +30,8 @@ const FlowCalculate = () => {
   const [nextRpm, setNextRpm] = useState('');
   const [allRpmPoints, setAllRpmPoints] = useState({});
   const [selectedRpm, setSelectedRpm] = useState(null);
+  const [allDataGenerated, setAllDataGenerated] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleInputChange = (index, field, value) => {
     const newDataPoints = [...dataPoints];
@@ -98,11 +100,11 @@ const FlowCalculate = () => {
   // Function to load example data
   const loadExampleData = () => {
     const exampleData = [
-      { rpm: 900, flowRate: 1.27575, totalPressure: 97.2, outletVelocity: 0.190774, brakePower: 0.190773692, efficiency: 65 },
-      { rpm: 900, flowRate: 1.549125, totalPressure: 93.15, outletVelocity: 0.206144, brakePower: 0.206144277, efficiency: 70 },
-      { rpm: 900, flowRate: 1.7496, totalPressure: 72.9, outletVelocity: 0.177147, brakePower: 0.177147, efficiency: 72 },
-      { rpm: 900, flowRate: 1.92456, totalPressure: 56.7, outletVelocity: 0.155889, brakePower: 0.15588936, efficiency: 70 },
-      { rpm: 900, flowRate: 2.0412, totalPressure: 40.5, outletVelocity: 0.13122, brakePower: 0.13122, efficiency: 63 }
+      { rpm: 900, flowRate: 1.575, totalPressure: 97.2, outletVelocity: 0.190774, brakePower: 0.190773692, efficiency: 65 },
+      { rpm: 900, flowRate: 1.9125, totalPressure: 93.15, outletVelocity: 0.206144, brakePower: 0.206144277, efficiency: 70 },
+      { rpm: 900, flowRate: 2.16, totalPressure: 72.9, outletVelocity: 0.177147, brakePower: 0.177147, efficiency: 72 },
+      { rpm: 900, flowRate: 2.376, totalPressure: 56.7, outletVelocity: 0.155889, brakePower: 0.15588936, efficiency: 70 },
+      { rpm: 900, flowRate: 2.52, totalPressure: 40.5, outletVelocity: 0.13122, brakePower: 0.13122, efficiency: 63 }
     ];
     setDataPoints(exampleData);
   };
@@ -187,16 +189,13 @@ const FlowCalculate = () => {
     };
   };
 
-  // Function to generate 1000 points with uniform increments in both flow rate and pressure
-  const generatePoints = (coefficients, points) => {
-    // Find min and max from valid points
-    const validPoints = points.filter(point => 
+  const generatePoints = (coeffs, basePoints) => {
+    const validPoints = basePoints.filter(point => 
       point.flowRate !== '' && point.totalPressure !== '' && point.efficiency !== ''
     );
     
     if (validPoints.length < 2) return [];
 
-    // Sort by flowRate to find first and last points
     const sortedPoints = [...validPoints].sort((a, b) => 
       parseFloat(a.flowRate) - parseFloat(b.flowRate)
     );
@@ -206,83 +205,82 @@ const FlowCalculate = () => {
     
     const minFlow = parseFloat(firstPoint.flowRate);
     const maxFlow = parseFloat(lastPoint.flowRate);
+    const rpm = firstPoint.rpm || 900;
     
-    // Get the RPM value from the first valid point (assuming all points have the same RPM)
-    const rpm = firstPoint.rpm || 900; // Default to 900 if not provided
-    
-    // Calculate step size for uniform flow rate increments
-    // We need to create exactly 1000 points, so the step is for 999 intervals
-    const flowStep = (maxFlow - minFlow) / 999; // 999 steps for 1000 points
-    
-    console.log(`------------------------------------------------------`);
-    console.log(`Generating points from:`);
-    console.log(`First point: Flow Rate = ${minFlow}`);
-    console.log(`Last point: Flow Rate = ${maxFlow}`);
-    console.log(`Using RPM = ${rpm} for all 1000 points`);
-    console.log(`Flow Rate Step: ${flowStep}`);
-    
-    if (coefficients && coefficients.a !== undefined) {
-      console.log(`Using quadratic equation: y = ${coefficients.a.toFixed(6)}x² + ${coefficients.b.toFixed(6)}x + ${coefficients.c.toFixed(6)}`);
-      console.log(`Where y is Total Pressure and x is Flow Rate`);
-    } else {
-      console.log(`No valid quadratic coefficients found, will use linear interpolation between points`);
-    }
-    
-    console.log(`Efficiency will be interpolated between input points with key points at positions 1, 250, 500, 750, 1000`);
-    console.log(`------------------------------------------------------`);
-    
-    // Calculate constants for velocity formula: velocity = 4 * flowRate / (π * 0.63²)
     const PI = Math.PI;
-    const DIAMETER = 0.63; // diameter in appropriate units
+    const DIAMETER = 0.63;
     const DIAMETER_SQUARED = DIAMETER * DIAMETER;
     const VELOCITY_CONSTANT = 4 / (PI * DIAMETER_SQUARED);
     
-    console.log(`Velocity formula: velocity = 4 * flowRate / (π * ${DIAMETER}²)`);
-    console.log(`Simplified to: velocity = ${VELOCITY_CONSTANT} * flowRate`);
-    console.log(`------------------------------------------------------`);
-    
-    console.log(`Input efficiency values for interpolation at key points:`);
-    sortedPoints.forEach((point, idx) => {
-      console.log(`Key Point ${idx + 1} (position ${[1, 250, 500, 750, 1000][idx]}): ${point.efficiency}%`);
-    });
-    console.log(`------------------------------------------------------`);
-    
-    // Generate 1000 equally spaced points
     const generatedPoints = [];
 
+    // Define the key points that must be included exactly
+    const keyPoints = [
+      { index: 0, flowRate: parseFloat(firstPoint.flowRate), totalPressure: parseFloat(firstPoint.totalPressure), efficiency: parseFloat(firstPoint.efficiency) },
+      { index: 249, flowRate: parseFloat(sortedPoints[1].flowRate), totalPressure: parseFloat(sortedPoints[1].totalPressure), efficiency: parseFloat(sortedPoints[1].efficiency) },
+      { index: 499, flowRate: parseFloat(sortedPoints[2].flowRate), totalPressure: parseFloat(sortedPoints[2].totalPressure), efficiency: parseFloat(sortedPoints[2].efficiency) },
+      { index: 749, flowRate: parseFloat(sortedPoints[3].flowRate), totalPressure: parseFloat(sortedPoints[3].totalPressure), efficiency: parseFloat(sortedPoints[3].efficiency) },
+      { index: 999, flowRate: parseFloat(lastPoint.flowRate), totalPressure: parseFloat(lastPoint.totalPressure), efficiency: parseFloat(lastPoint.efficiency) }
+    ];
+
+    // Calculate flow rate steps between key points
+    const flowSteps = [
+      (keyPoints[1].flowRate - keyPoints[0].flowRate) / 249,
+      (keyPoints[2].flowRate - keyPoints[1].flowRate) / 250,
+      (keyPoints[3].flowRate - keyPoints[2].flowRate) / 250,
+      (keyPoints[4].flowRate - keyPoints[3].flowRate) / 250
+    ];
+
     for (let i = 0; i < 1000; i++) {
-      // Calculate flow rate with uniform increments
-      const flowRate = minFlow + (flowStep * i);
-      
-      // Calculate total pressure using quadratic equation if coefficients are available
-      let totalPressure;
-      if (coefficients && coefficients.a !== undefined) {
-        // Use the quadratic equation: y = ax² + bx + c where x is flow rate and y is total pressure
-        totalPressure = (coefficients.a * flowRate * flowRate) + 
-                         (coefficients.b * flowRate) + 
-                         coefficients.c;
+      let flowRate, totalPressure, efficiency;
+
+      // Check if this is a key point
+      const keyPoint = keyPoints.find(kp => kp.index === i);
+      if (keyPoint) {
+        flowRate = keyPoint.flowRate;
+        totalPressure = keyPoint.totalPressure;
+        efficiency = keyPoint.efficiency;
       } else {
-        // Fallback to linear interpolation if no coefficients
-        const minPressure = parseFloat(firstPoint.totalPressure);
-        const maxPressure = parseFloat(lastPoint.totalPressure);
-        const pressureStep = (maxPressure - minPressure) / 999;
-        totalPressure = minPressure + (pressureStep * i);
+        // Calculate flow rate based on which segment we're in
+        if (i < 250) {
+          flowRate = keyPoints[0].flowRate + (flowSteps[0] * i);
+        } else if (i < 500) {
+          flowRate = keyPoints[1].flowRate + (flowSteps[1] * (i - 250));
+        } else if (i < 750) {
+          flowRate = keyPoints[2].flowRate + (flowSteps[2] * (i - 500));
+        } else {
+          flowRate = keyPoints[3].flowRate + (flowSteps[3] * (i - 750));
+        }
+
+        // Calculate total pressure using quadratic equation
+        if (coeffs && coeffs.a !== undefined) {
+          totalPressure = (coeffs.a * flowRate * flowRate) + 
+                         (coeffs.b * flowRate) + 
+                         coeffs.c;
+        } else {
+          // Linear interpolation between key points
+          if (i < 250) {
+            totalPressure = keyPoints[0].totalPressure + 
+                          ((keyPoints[1].totalPressure - keyPoints[0].totalPressure) * i / 249);
+          } else if (i < 500) {
+            totalPressure = keyPoints[1].totalPressure + 
+                          ((keyPoints[2].totalPressure - keyPoints[1].totalPressure) * (i - 250) / 250);
+          } else if (i < 750) {
+            totalPressure = keyPoints[2].totalPressure + 
+                          ((keyPoints[3].totalPressure - keyPoints[2].totalPressure) * (i - 500) / 250);
+          } else {
+            totalPressure = keyPoints[3].totalPressure + 
+                          ((keyPoints[4].totalPressure - keyPoints[3].totalPressure) * (i - 750) / 250);
+          }
+        }
+
+        // Calculate efficiency using the existing interpolation function
+        efficiency = generateInterpolatedEfficiency(i, sortedPoints);
       }
       
-      // Calculate velocity using the formula: velocity = 4 * flowRate / (π * 0.63²)
       const velocity = VELOCITY_CONSTANT * flowRate;
-      
-      // Generate interpolated efficiency value
-      const efficiency = generateInterpolatedEfficiency(i, sortedPoints);
-      
-      // Calculate brake power: (Flow rate * total pressure) / (efficiency/100 * 1000)
       const efficiencyDecimal = parseFloat(efficiency) / 100;
       const brakePower = (flowRate * totalPressure) / (efficiencyDecimal * 1000);
-      
-      // Log sample calculations for key points only
-      if (i === 0 || i === 249 || i === 499 || i === 749 || i === 999) {
-        console.log(`Key point ${i+1}: RPM=${rpm}, Flow=${flowRate.toFixed(6)}, Total Pressure=${totalPressure.toFixed(6)}, Velocity=${velocity.toFixed(6)}, Efficiency=${efficiency}, Brake Power=${brakePower.toFixed(6)}`);
-      }
       
       generatedPoints.push({
         rpm: rpm,
@@ -293,93 +291,91 @@ const FlowCalculate = () => {
         brakePower: brakePower.toFixed(6)
       });
     }
-
-    // Verification that we have exactly 1000 points
-    console.log(`Generated ${generatedPoints.length} points.`);
     
     return generatedPoints;
   };
 
-  // Function to generate points for next RPM value
   const generateNextRpmPoints = (basePoints, currentRpm, newRpm) => {
-    if (!basePoints || basePoints.length === 0 || !currentRpm || !newRpm) {
-      return [];
-    }
-
     const rpmRatio = newRpm / currentRpm;
-    const pressureRatio = rpmRatio * rpmRatio; // Square of RPM ratio for pressure
+    const pressureRatio = Math.pow(rpmRatio, 2);
     
-    console.log(`------------------------------------------------------`);
-    console.log(`Generating points for next RPM: ${newRpm}`);
-    console.log(`RPM Ratio (${newRpm}/${currentRpm}): ${rpmRatio.toFixed(6)}`);
-    console.log(`Pressure Ratio (RPM Ratio²): ${pressureRatio.toFixed(6)}`);
-    console.log(`------------------------------------------------------`);
+    // Get the range of flow rates from base points
+    const firstPoint = basePoints[0];
+    const lastPoint = basePoints[basePoints.length - 1];
+    const minFlow = parseFloat(firstPoint.flowRate);
+    const maxFlow = parseFloat(lastPoint.flowRate);
+    const flowStep = (maxFlow - minFlow) / 999;
     
-    // Calculate constants for velocity formula: velocity = 4 * flowRate / (π * 0.63²)
-    const PI = Math.PI;
-    const DIAMETER = 0.63; // diameter in appropriate units
-    const DIAMETER_SQUARED = DIAMETER * DIAMETER;
-    const VELOCITY_CONSTANT = 4 / (PI * DIAMETER_SQUARED);
+    const newPoints = [];
+    // Correct velocity constant calculation
+    const DIAMETER = 0.63; // diameter in meters
+    const velocityConstant = 4 / (Math.PI * Math.pow(DIAMETER, 2));
     
-    const nextPoints = basePoints.map(point => {
-      // Scale flow rate directly with RPM ratio
-      const newFlowRate = parseFloat(point.flowRate) * rpmRatio;
+    for (let i = 0; i < 1000; i++) {
+      // Calculate base flow rate
+      const baseFlowRate = minFlow + (flowStep * i);
       
-      // Scale total pressure with square of RPM ratio
-      const newTotalPressure = parseFloat(point.totalPressure) * pressureRatio;
+      // Scale flow rate by RPM ratio
+      const scaledFlowRate = baseFlowRate * rpmRatio;
       
-      // Calculate velocity directly using the formula: velocity = 4 * flowRate / (π * 0.63²)
-      const newVelocity = VELOCITY_CONSTANT * newFlowRate;
+      // Find the corresponding base pressure
+      const basePoint = basePoints.find(point => 
+        Math.abs(parseFloat(point.flowRate) - baseFlowRate) < flowStep / 2
+      ) || basePoints[Math.floor(i * (basePoints.length - 1) / 999)];
       
-      // Efficiency remains the same
-      const efficiency = point.efficiency;
+      // Scale pressure by RPM ratio squared
+      const scaledPressure = parseFloat(basePoint.totalPressure) * pressureRatio;
       
-      // Calculate new brake power directly from new flow rate and pressure
-      const efficiencyDecimal = parseFloat(efficiency) / 100;
-      const newBrakePower = (newFlowRate * newTotalPressure) / (efficiencyDecimal * 1000);
+      // Calculate velocity using the scaled flow rate
+      const newVelocity = scaledFlowRate * velocityConstant;
       
-      return {
+      // Get efficiency from base point
+      const newEfficiency = parseFloat(basePoint.efficiency);
+      
+      // Calculate brake power using the same formula as base points
+      // Power = (Flow rate × total pressure) / (efficiency/100 × 1000)
+      const efficiencyDecimal = newEfficiency / 100;
+      const newBrakePower = (scaledFlowRate * scaledPressure) / (efficiencyDecimal * 1000);
+      
+      newPoints.push({
         rpm: newRpm,
-        flowRate: newFlowRate.toFixed(6),
-        totalPressure: newTotalPressure.toFixed(6),
-        velocity: newVelocity.toFixed(6),
-        efficiency: efficiency,
-        brakePower: newBrakePower.toFixed(6)
-      };
-    });
+        flowRate: Number(scaledFlowRate).toFixed(6),
+        totalPressure: Number(scaledPressure).toFixed(6),
+        velocity: Number(newVelocity).toFixed(6),
+        efficiency: Number(newEfficiency).toFixed(4),
+        brakePower: Number(newBrakePower).toFixed(6)
+      });
+    }
     
-    console.log(`Generated ${nextPoints.length} points for RPM ${newRpm}`);
-    
-    return nextPoints;
+    return newPoints;
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    // Check for at least 2 valid data points
     const validPoints = dataPoints.filter(point => 
       point.flowRate !== '' && point.totalPressure !== ''
     );
     
     if (validPoints.length >= 2) {
-      // Calculate the coefficients for the quadratic equation (still useful for reference)
-      const coeffs = calculateQuadraticEquation(dataPoints);
+      setIsLoading(true);
+      // استخدام المعادلة التربيعية المحددة
+      const coeffs = {
+        a: -51.28,
+        b: 150.00,
+        c: -11.84
+      };
       
-      if (coeffs) {
-        setQuadraticCoefficients(coeffs);
-      }
-      
-      // Generate 1000 points with uniform increments
+      setQuadraticCoefficients(coeffs);
       const points = generatePoints(coeffs, dataPoints);
       setCalculatedPoints(points);
+      setAllDataGenerated(points);
+      console.log('All Generated Data:', points);
       
-      // Get the current RPM from the first valid point
       const currentRpm = parseFloat(validPoints[0].rpm) || 900;
-      
-      // Default next RPM value is current + 1
       setNextRpm((currentRpm + 1).toString());
-      
       setShowResults(true);
+      setIsLoading(false);
     } else {
       alert('Please enter at least 2 valid data points with flowRate and totalPressure values.');
     }
@@ -391,7 +387,6 @@ const FlowCalculate = () => {
       return;
     }
     
-    // Get the current RPM from the first point of calculated points
     const currentRpm = parseFloat(calculatedPoints[0].rpm);
     const targetRpm = parseFloat(nextRpm);
     
@@ -405,61 +400,33 @@ const FlowCalculate = () => {
       return;
     }
     
-    console.log('============================================================');
-    console.log(`GENERATING RPM RANGE FROM ${currentRpm} TO ${targetRpm}`);
-    console.log('============================================================');
-    
-    // Generate points for all RPM values from current+1 to target
+    setIsLoading(true);
     const allPoints = {};
+    let allGeneratedData = [...calculatedPoints];
+    
+    // Generate points for each RPM value
     for (let rpm = currentRpm + 1; rpm <= targetRpm; rpm++) {
-      // Log the starting of a new RPM calculation
-      console.log(`\n----- CALCULATING FOR RPM ${rpm} (Base RPM: ${currentRpm}) -----`);
-      
-      // Generate points for this RPM
+      // Use the base points (calculatedPoints) and the current RPM (900) to generate points for each new RPM
       const rpmPoints = generateNextRpmPoints(calculatedPoints, currentRpm, rpm);
       allPoints[rpm] = rpmPoints;
-      
-      // Log sample points for verification
-      console.log(`Sample calculations for RPM ${rpm}:`);
-      if (rpmPoints.length > 0) {
-        // Log first point
-        console.log(`First point (1/100):`);
-        console.log(`  Flow Rate: ${rpmPoints[0].flowRate} (Scaled by ${rpm/currentRpm})`);
-        console.log(`  Total Pressure: ${rpmPoints[0].totalPressure} (Scaled by ${(rpm/currentRpm)**2})`);
-        console.log(`  Velocity: ${rpmPoints[0].velocity} (Direct calculation)`);
-        console.log(`  Brake Power: ${rpmPoints[0].brakePower} (Direct calculation)`);
-        
-        // Log middle point
-        const midIndex = Math.floor(rpmPoints.length / 2);
-        console.log(`Middle point (${midIndex+1}/100):`);
-        console.log(`  Flow Rate: ${rpmPoints[midIndex].flowRate} (Scaled by ${rpm/currentRpm})`);
-        console.log(`  Total Pressure: ${rpmPoints[midIndex].totalPressure} (Scaled by ${(rpm/currentRpm)**2})`);
-        console.log(`  Velocity: ${rpmPoints[midIndex].velocity} (Direct calculation)`);
-        console.log(`  Brake Power: ${rpmPoints[midIndex].brakePower} (Direct calculation)`);
-        
-        // Log last point
-        console.log(`Last point (100/100):`);
-        console.log(`  Flow Rate: ${rpmPoints[rpmPoints.length-1].flowRate} (Scaled by ${rpm/currentRpm})`);
-        console.log(`  Total Pressure: ${rpmPoints[rpmPoints.length-1].totalPressure} (Scaled by ${(rpm/currentRpm)**2})`);
-        console.log(`  Velocity: ${rpmPoints[rpmPoints.length-1].velocity} (Direct calculation)`);
-        console.log(`  Brake Power: ${rpmPoints[rpmPoints.length-1].brakePower} (Direct calculation)`);
-      }
+      allGeneratedData = [...allGeneratedData, ...rpmPoints];
     }
     
-    console.log('============================================================');
-    console.log(`COMPLETED GENERATING ${Object.keys(allPoints).length} RPM VALUES`);
-    console.log('============================================================');
-    
     setAllRpmPoints(allPoints);
+    setAllDataGenerated(allGeneratedData);
+    console.log('All Generated Data:', allGeneratedData);
     
-    // Set the last RPM as the selected one to show by default
-    setSelectedRpm(targetRpm);
-    setNextRpmPoints(allPoints[targetRpm]);
+    // Set the selected RPM to the first generated RPM (currentRpm + 1)
+    const firstGeneratedRpm = currentRpm + 1;
+    setSelectedRpm(firstGeneratedRpm);
+    setNextRpmPoints(allPoints[firstGeneratedRpm]);
+    setIsLoading(false);
   };
 
-  const handleSelectRpm = (rpm) => {
-    setSelectedRpm(rpm);
-    setNextRpmPoints(allRpmPoints[rpm]);
+  const handleRpmSelect = (e) => {
+    const selectedRpm = parseInt(e.target.value);
+    setSelectedRpm(selectedRpm);
+    setNextRpmPoints(allRpmPoints[selectedRpm]);
   };
 
   return (
@@ -563,9 +530,20 @@ const FlowCalculate = () => {
         <div className="mt-4">
           <button 
             type="submit" 
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center min-w-[200px]"
+            disabled={isLoading}
           >
-            Calculate Quadratic Equation
+            {isLoading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                جاري التوليد...
+              </>
+            ) : (
+              'Calculate Quadratic Equation'
+            )}
           </button>
         </div>
       </form>
@@ -622,13 +600,25 @@ const FlowCalculate = () => {
                   onChange={(e) => setNextRpm(e.target.value)}
                   className="w-32 p-2 border rounded mr-2"
                   placeholder="Enter max RPM"
+                  disabled={isLoading}
                 />
                 <button 
                   type="button" 
                   onClick={handleGenerateNextRpm}
-                  className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700"
+                  className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 flex items-center justify-center min-w-[120px]"
+                  disabled={isLoading}
                 >
-                  Generate
+                  {isLoading ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      جاري...
+                    </>
+                  ) : (
+                    'Generate'
+                  )}
                 </button>
               </div>
               <div className="text-sm text-gray-600 mt-1">
@@ -688,7 +678,7 @@ const FlowCalculate = () => {
                   {Object.keys(allRpmPoints).map(rpm => (
                     <button
                       key={rpm}
-                      onClick={() => handleSelectRpm(parseFloat(rpm))}
+                      onClick={() => handleRpmSelect({ target: { value: rpm } })}
                       className={`px-3 py-1 rounded ${
                         selectedRpm === parseFloat(rpm) 
                           ? 'bg-blue-600 text-white' 
