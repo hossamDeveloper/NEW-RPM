@@ -1,6 +1,24 @@
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { useDispatch, useSelector } from 'react-redux';
+import {
+  setAllRpmPoints,
+  setCalculatedPoints,
+  setSelectedRpm,
+  setNextRpmPoints,
+  setAllDataGenerated
+} from '../redux/flowSlice';
 
 const FlowCalculate = () => {
+  const dispatch = useDispatch();
+  const {
+    allRpmPoints,
+    calculatedPoints,
+    selectedRpm,
+    nextRpmPoints,
+    allDataGenerated
+  } = useSelector((state) => state.flow);
+
   const initialPoint = {
     rpm: '',
     flowRate: '',
@@ -24,16 +42,21 @@ const FlowCalculate = () => {
     c: 0
   });
 
-  const [calculatedPoints, setCalculatedPoints] = useState([]);
-  const [nextRpmPoints, setNextRpmPoints] = useState([]);
   const [showResults, setShowResults] = useState(false);
   const [nextRpm, setNextRpm] = useState('');
-  const [allRpmPoints, setAllRpmPoints] = useState({});
-  const [selectedRpm, setSelectedRpm] = useState(null);
-  const [allDataGenerated, setAllDataGenerated] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleInputChange = (index, field, value) => {
+    if (field === 'rpm') {
+      const rpmValue = parseFloat(value);
+      if (!isNaN(rpmValue) && (rpmValue < 900 || rpmValue > 3000)) {
+        setError('RPM must be between 900 and 3000.');
+        return;
+      }
+    }
+    setError('');
+    
     const newDataPoints = [...dataPoints];
     newDataPoints[index] = {
       ...newDataPoints[index],
@@ -253,11 +276,11 @@ const FlowCalculate = () => {
         }
 
         // Calculate total pressure using quadratic equation
-        if (coeffs && coeffs.a !== undefined) {
-          totalPressure = (coeffs.a * flowRate * flowRate) + 
-                         (coeffs.b * flowRate) + 
-                         coeffs.c;
-        } else {
+      if (coeffs && coeffs.a !== undefined) {
+        totalPressure = (coeffs.a * flowRate * flowRate) + 
+                       (coeffs.b * flowRate) + 
+                       coeffs.c;
+      } else {
           // Linear interpolation between key points
           if (i < 250) {
             totalPressure = keyPoints[0].totalPressure + 
@@ -342,7 +365,6 @@ const FlowCalculate = () => {
     
     if (validPoints.length >= 2) {
       setIsLoading(true);
-      // استخدام المعادلة التربيعية المحددة
       const coeffs = {
         a: -51.28,
         b: 150.00,
@@ -351,11 +373,18 @@ const FlowCalculate = () => {
       
       setQuadraticCoefficients(coeffs);
       const points = generatePoints(coeffs, dataPoints);
-      setCalculatedPoints(points);
-      setAllDataGenerated(points);
-      console.log('All Generated Data:', points);
+      
+      dispatch(setCalculatedPoints(points));
+      dispatch(setAllDataGenerated(points));
       
       const currentRpm = parseFloat(validPoints[0].rpm) || 900;
+      dispatch(setAllRpmPoints({
+        [currentRpm]: points
+      }));
+      
+      dispatch(setSelectedRpm(currentRpm));
+      dispatch(setNextRpmPoints(points));
+      
       setNextRpm((currentRpm + 1).toString());
       setShowResults(true);
       setIsLoading(false);
@@ -366,7 +395,7 @@ const FlowCalculate = () => {
 
   const handleGenerateNextRpm = () => {
     if (!nextRpm || calculatedPoints.length === 0) {
-      alert('Please enter a valid RPM value and ensure base points are calculated first.');
+      setError('Please enter a valid RPM value and ensure base points are calculated first.');
       return;
     }
     
@@ -374,343 +403,238 @@ const FlowCalculate = () => {
     const targetRpm = parseFloat(nextRpm);
     
     if (isNaN(targetRpm) || targetRpm <= 0) {
-      alert('Please enter a valid positive number for RPM.');
+      setError('Please enter a valid positive number for RPM.');
       return;
     }
 
     if (targetRpm <= currentRpm) {
-      alert('Please enter an RPM value greater than the current RPM: ' + currentRpm);
+      setError('Please enter an RPM value greater than the current RPM: ' + currentRpm);
+      return;
+    }
+
+    if (targetRpm < 900 || targetRpm > 3000) {
+      setError('RPM must be between 900 and 3000.');
       return;
     }
     
+    setError('');
     setIsLoading(true);
-    const allPoints = {};
+    const allPoints = { ...allRpmPoints };
     let allGeneratedData = [...calculatedPoints];
     
-    // Generate points for each RPM value
     for (let rpm = currentRpm + 1; rpm <= targetRpm; rpm++) {
-      // Use the base points (calculatedPoints) and the current RPM (900) to generate points for each new RPM
       const rpmPoints = generateNextRpmPoints(calculatedPoints, currentRpm, rpm);
       allPoints[rpm] = rpmPoints;
       allGeneratedData = [...allGeneratedData, ...rpmPoints];
     }
     
-    setAllRpmPoints(allPoints);
-    setAllDataGenerated(allGeneratedData);
-    console.log('All Generated Data:', allGeneratedData);
+    dispatch(setAllRpmPoints(allPoints));
+    dispatch(setAllDataGenerated(allGeneratedData));
     
-    // Set the selected RPM to the first generated RPM (currentRpm + 1)
     const firstGeneratedRpm = currentRpm + 1;
-    setSelectedRpm(firstGeneratedRpm);
-    setNextRpmPoints(allPoints[firstGeneratedRpm]);
+    dispatch(setSelectedRpm(firstGeneratedRpm));
+    dispatch(setNextRpmPoints(allPoints[firstGeneratedRpm]));
     setIsLoading(false);
   };
 
   const handleRpmSelect = (e) => {
     const selectedRpm = parseInt(e.target.value);
-    setSelectedRpm(selectedRpm);
-    setNextRpmPoints(allRpmPoints[selectedRpm]);
+    dispatch(setSelectedRpm(selectedRpm));
+    dispatch(setNextRpmPoints(allRpmPoints[selectedRpm]));
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <h2 className="text-2xl font-bold mb-4">Flow Calculation Data</h2>
-      
-      <div className="mb-4">
-        <button
-          type="button"
-          onClick={loadExampleData}
-          className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+    <div className="min-h-screen bg-gradient-to-b from-[#021F59] to-[#03178C] py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 shadow-xl border border-white/20"
         >
-          Load Example Data
-        </button>
-      </div>
-      
-      <form onSubmit={handleSubmit}>
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-white border rounded-lg">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="py-2 px-4 border-b">Point</th>
-                <th className="py-2 px-4 border-b">RPM</th>
-                <th className="py-2 px-4 border-b">Flow Rate</th>
-                <th className="py-2 px-4 border-b">Total Pressure</th>
-                <th className="py-2 px-4 border-b">Outlet Velocity</th>
-                <th className="py-2 px-4 border-b">Brake Power</th>
-                <th className="py-2 px-4 border-b">Efficiency (%)</th>
-              </tr>
-            </thead>
-            <tbody>
+          <h1 className="text-3xl font-bold text-white mb-8 text-center">Flow Calculator</h1>
+          
+          {/* Input Form */}
+          <div className="space-y-4 mb-8">
+            <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
+              <div className="grid grid-cols-5 gap-4 text-white/80 font-medium mb-2">
+                <div>Point</div>
+                <div>RPM</div>
+                <div>Flow Rate</div>
+                <div>Total Pressure</div>
+                <div>Efficiency</div>
+              </div>
               {dataPoints.map((point, index) => (
-                <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                  <td className="py-2 px-4 border-b text-center font-semibold">{index + 1}</td>
-                  <td className="py-2 px-4 border-b">
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="grid grid-cols-5 gap-4 items-center py-2 border-b border-white/10 last:border-0"
+                >
+                  <div className="font-medium text-white">Point {index + 1}</div>
+                  <div>
                     <input
                       type="number"
-                      step="any"
-                      className="w-full p-1 border rounded"
                       value={point.rpm}
                       onChange={(e) => handleInputChange(index, 'rpm', e.target.value)}
-                      placeholder="Ex: 900"
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
+                      placeholder="RPM"
                     />
-                  </td>
-                  <td className="py-2 px-4 border-b">
+                  </div>
+                  <div>
                     <input
                       type="number"
-                      step="any"
-                      className="w-full p-1 border rounded"
                       value={point.flowRate}
                       onChange={(e) => handleInputChange(index, 'flowRate', e.target.value)}
-                      placeholder="Ex: 1.27575"
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
+                      placeholder="Flow Rate"
                     />
-                  </td>
-                  <td className="py-2 px-4 border-b">
+                  </div>
+                  <div>
                     <input
                       type="number"
-                      step="any"
-                      className="w-full p-1 border rounded"
                       value={point.totalPressure}
                       onChange={(e) => handleInputChange(index, 'totalPressure', e.target.value)}
-                      placeholder="Ex: 97.2"
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
+                      placeholder="Total Pressure"
                     />
-                  </td>
-                  <td className="py-2 px-4 border-b">
+                  </div>
+                  <div>
                     <input
                       type="number"
-                      step="any"
-                      className="w-full p-1 border rounded"
-                      value={point.outletVelocity}
-                      onChange={(e) => handleInputChange(index, 'outletVelocity', e.target.value)}
-                      placeholder="Ex: 0.190774"
-                    />
-                  </td>
-                  <td className="py-2 px-4 border-b">
-                    <input
-                      type="number"
-                      step="any"
-                      className="w-full p-1 border rounded"
-                      value={point.brakePower}
-                      onChange={(e) => handleInputChange(index, 'brakePower', e.target.value)}
-                      placeholder="Ex: 0.190773692"
-                    />
-                  </td>
-                  <td className="py-2 px-4 border-b">
-                    <input
-                      type="number"
-                      step="any"
-                      className="w-full p-1 border rounded"
                       value={point.efficiency}
                       onChange={(e) => handleInputChange(index, 'efficiency', e.target.value)}
-                      placeholder="Ex: 65"
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
+                      placeholder="Efficiency"
                     />
-                  </td>
-                </tr>
+                  </div>
+                </motion.div>
               ))}
-            </tbody>
-          </table>
-        </div>
-        
-        <div className="mt-4">
-          <button 
-            type="submit" 
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center min-w-[200px]"
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                جاري التوليد...
-              </>
-            ) : (
-              'Calculate Quadratic Equation'
-            )}
-          </button>
-        </div>
-      </form>
+            </div>
+          </div>
 
-      {showResults && (
-        <div className="mt-8">
-          <h3 className="text-xl font-bold mb-2">Calculation Results</h3>
-          
-          {quadraticCoefficients && quadraticCoefficients.a !== 0 && (
-            <p className="mb-4">
-              <strong>Quadratic Equation:</strong> y = {quadraticCoefficients.a.toFixed(6)}x² + {quadraticCoefficients.b.toFixed(6)}x + {quadraticCoefficients.c.toFixed(6)}
-              <br />
-              <span className="text-sm text-gray-600">Where y is Total Pressure and x is Flow Rate</span>
-              <br />
-              <span className="text-sm text-gray-600">The 1000 generated points follow this equation exactly</span>
-            </p>
-          )}
-          
-          <p className="mb-4">
-            <strong>Generated Points:</strong> 1000 points with uniform increments in both Flow Rate and Total Pressure between the first and last input points.
-            <br />
-            <strong>Velocity Formula:</strong> velocity = 4 × flowRate / (π × 0.63²)
-            <br />
-            <strong>Efficiency Values:</strong> Exact input values at key points with linear interpolation in between:
-            <br />
-            <span className="text-sm pl-4 block">
-              Point 1: Exactly {parseFloat(dataPoints[0]?.efficiency || 65).toFixed(4)}%
-              <br />
-              Points 2-249: Linear steps of 0.020080% per point
-              <br />
-              Point 250: Exactly {parseFloat(dataPoints[1]?.efficiency || 70).toFixed(4)}%
-              <br />
-              Points 251-499: Linear steps of 0.008032% per point
-              <br />
-              Point 500: Exactly {parseFloat(dataPoints[2]?.efficiency || 72).toFixed(4)}%
-              <br />
-              Points 501-749: Linear steps of -0.008032% per point
-              <br />
-              Point 750: Exactly {parseFloat(dataPoints[3]?.efficiency || 70).toFixed(4)}%
-              <br />
-              Points 751-999: Linear steps of -0.028112% per point
-              <br />
-              Point 1000: Exactly {parseFloat(dataPoints[4]?.efficiency || 63).toFixed(4)}%
-            </span>
-          </p>
-          
-          <div className="my-4 flex items-center">
-            <div className="flex-1">
-              <label className="block font-medium mb-1">Generate RPM Range:</label>
-              <div className="flex items-center">
-                <input 
-                  type="number" 
-                  value={nextRpm}
-                  onChange={(e) => setNextRpm(e.target.value)}
-                  className="w-32 p-2 border rounded mr-2"
-                  placeholder="Enter max RPM"
-                  disabled={isLoading}
-                />
-                <button 
-                  type="button" 
-                  onClick={handleGenerateNextRpm}
-                  className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 flex items-center justify-center min-w-[120px]"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      جاري...
-                    </>
-                  ) : (
-                    'Generate'
-                  )}
-                </button>
-              </div>
-              <div className="text-sm text-gray-600 mt-1">
-                Will generate all RPM values from {calculatedPoints.length > 0 ? parseInt(calculatedPoints[0].rpm) + 1 : '?'} to entered value
-              </div>
-            </div>
-            <div className="flex-1">
-              <p className="text-sm bg-gray-100 p-2 rounded">
-                <strong>Scaling Laws:</strong>
-                <br />
-                • Flow Rate ∝ RPM: New Flow = Old Flow × (New RPM ÷ Old RPM)
-                <br />
-                • Pressure ∝ RPM²: New Pressure = Old Pressure × (New RPM ÷ Old RPM)²
-                <br />
-                • Velocity: Calculated directly using velocity = 4 × flowRate / (π × 0.63²)
-                <br />
-                • Brake Power: Calculated directly using (Flow rate × total pressure) / (efficiency/100 × 1000)
-              </p>
-            </div>
+          {/* Action Buttons */}
+          <div className="flex flex-wrap gap-4 justify-center mb-8">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={loadExampleData}
+              className="w-full py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#03178C] to-[#034AA6] hover:from-[#034AA6] hover:to-[#03178C] transition-all duration-200 shadow-lg"
+            >
+              Load All Example Data
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleSubmit}
+              className="w-full py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#03178C] to-[#034AA6] hover:from-[#034AA6] hover:to-[#03178C] transition-all duration-200 shadow-lg"
+            >
+              Calculate
+            </motion.button>
           </div>
-          
-          <h4 className="text-lg font-semibold mb-2">Generated 1000 Points:</h4>
-          <div className="overflow-x-auto max-h-96 overflow-y-auto">
-            <table className="min-w-full bg-white border rounded-lg">
-              <thead className="sticky top-0 bg-gray-200">
-                <tr>
-                  <th className="py-2 px-4 border-b">Point</th>
-                  <th className="py-2 px-4 border-b">RPM</th>
-                  <th className="py-2 px-4 border-b">Flow Rate</th>
-                  <th className="py-2 px-4 border-b">Total Pressure</th>
-                  <th className="py-2 px-4 border-b">Velocity</th>
-                  <th className="py-2 px-4 border-b">Brake Power</th>
-                  <th className="py-2 px-4 border-b">Efficiency (%)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {calculatedPoints.map((point, index) => (
-                  <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                    <td className="py-1 px-4 border-b text-center font-medium">{index + 1}</td>
-                    <td className="py-1 px-4 border-b">{point.rpm}</td>
-                    <td className="py-1 px-4 border-b">{point.flowRate}</td>
-                    <td className="py-1 px-4 border-b">{point.totalPressure}</td>
-                    <td className="py-1 px-4 border-b">{point.velocity}</td>
-                    <td className="py-1 px-4 border-b">{point.brakePower}</td>
-                    <td className="py-1 px-4 border-b">{point.efficiency}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          
-          {Object.keys(allRpmPoints).length > 0 && (
-            <>
-              <div className="flex items-center mt-8 mb-2">
-                <h4 className="text-lg font-semibold">Select RPM Value:</h4>
-                <div className="ml-4 overflow-x-auto flex space-x-2 p-2">
-                  {Object.keys(allRpmPoints).map(rpm => (
-                    <button
-                      key={rpm}
-                      onClick={() => handleRpmSelect({ target: { value: rpm } })}
-                      className={`px-3 py-1 rounded ${
-                        selectedRpm === parseFloat(rpm) 
-                          ? 'bg-blue-600 text-white' 
-                          : 'bg-gray-200 hover:bg-gray-300'
-                      }`}
+
+          {/* Results Section */}
+          {showResults && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10"
+            >
+              <h2 className="text-2xl font-bold text-white mb-6">Results</h2>
+              
+              {/* Next RPM Input */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-white/80 mb-2">Enter Next RPM</label>
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-4">
+                    <input
+                      type="number"
+                      value={nextRpm}
+                      onChange={(e) => {
+                        setNextRpm(e.target.value);
+                        setError('');
+                      }}
+                      className="flex-1 bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
+                      placeholder="Enter RPM"
+                    />
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={handleGenerateNextRpm}
+                      className=" py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#03178C] to-[#034AA6] hover:from-[#034AA6] hover:to-[#03178C] transition-all duration-200 shadow-lg"
+                      >
+                      Generate
+                    </motion.button>
+                  </div>
+                  {error && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-red-500 text-sm font-medium"
                     >
-                      {rpm}
-                    </button>
-                  ))}
+                      {error}
+                    </motion.p>
+                  )}
                 </div>
               </div>
-              
-              {selectedRpm && (
-                <>
-                  <h4 className="text-lg font-semibold mb-2">Points for RPM {selectedRpm}:</h4>
-                  <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                    <table className="min-w-full bg-white border rounded-lg">
-                      <thead className="sticky top-0 bg-gray-200">
-                        <tr>
-                          <th className="py-2 px-4 border-b">Point</th>
-                          <th className="py-2 px-4 border-b">RPM</th>
-                          <th className="py-2 px-4 border-b">Flow Rate</th>
-                          <th className="py-2 px-4 border-b">Total Pressure</th>
-                          <th className="py-2 px-4 border-b">Velocity</th>
-                          <th className="py-2 px-4 border-b">Brake Power</th>
-                          <th className="py-2 px-4 border-b">Efficiency (%)</th>
+
+              {/* RPM Selection */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-white/80 mb-2">Select RPM</label>
+                <div className="overflow-x-auto">
+                  <div className="flex space-x-2 pb-2 min-w-min">
+                    {Object.keys(allRpmPoints).sort((a, b) => Number(a) - Number(b)).map((rpm) => (
+                      <motion.button
+                        key={rpm}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => handleRpmSelect({ target: { value: rpm } })}
+                        className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap ${
+                          selectedRpm === Number(rpm)
+                            ? 'bg-[#034AA6] text-white'
+                            : 'bg-white/10 text-white/80 hover:bg-white/20'
+                        }`}
+                      >
+                        {rpm} RPM
+                      </motion.button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Results Table */}
+              {selectedRpm && allRpmPoints[selectedRpm] && (
+                <div className="overflow-x-auto">
+                  <div className="max-h-[400px] overflow-y-auto">
+                    <table className="w-full text-white">
+                      <thead className="sticky top-0 bg-[#021F59]/80 backdrop-blur-sm">
+                        <tr className="border-b border-white/20">
+                          <th className="px-4 py-2 text-left">Flow Rate</th>
+                          <th className="px-4 py-2 text-left">Total Pressure</th>
+                          <th className="px-4 py-2 text-left">Velocity</th>
+                          <th className="px-4 py-2 text-left">Brake Power</th>
+                          <th className="px-4 py-2 text-left">Efficiency</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {nextRpmPoints.map((point, index) => (
-                          <tr key={index} className={index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-                            <td className="py-1 px-4 border-b text-center font-medium">{index + 1}</td>
-                            <td className="py-1 px-4 border-b">{point.rpm}</td>
-                            <td className="py-1 px-4 border-b">{point.flowRate}</td>
-                            <td className="py-1 px-4 border-b">{point.totalPressure}</td>
-                            <td className="py-1 px-4 border-b">{point.velocity}</td>
-                            <td className="py-1 px-4 border-b">{point.brakePower}</td>
-                            <td className="py-1 px-4 border-b">{point.efficiency}</td>
+                        {allRpmPoints[selectedRpm].map((point, index) => (
+                          <tr key={index} className="border-b border-white/10 hover:bg-white/5">
+                            <td className="px-4 py-2">{point.flowRate}</td>
+                            <td className="px-4 py-2">{point.totalPressure}</td>
+                            <td className="px-4 py-2">{point.velocity}</td>
+                            <td className="px-4 py-2">{point.brakePower}</td>
+                            <td className="px-4 py-2">{point.efficiency}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </>
+                </div>
               )}
-            </>
+            </motion.div>
           )}
-        </div>
-      )}
+        </motion.div>
+      </div>
     </div>
   );
 };
