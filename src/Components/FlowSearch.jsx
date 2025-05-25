@@ -11,6 +11,7 @@ import {
   Tooltip,
   Legend
 } from 'chart.js';
+import annotationPlugin from 'chartjs-plugin-annotation';
 
 // Register ChartJS components
 ChartJS.register(
@@ -19,7 +20,8 @@ ChartJS.register(
   LineElement,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  annotationPlugin
 );
 
 const FlowSearch = () => {
@@ -124,6 +126,10 @@ const FlowSearch = () => {
     // Sort points by flow rate
     const sortedPoints = rpmPoints.sort((a, b) => parseFloat(a.flowRate) - parseFloat(b.flowRate));
 
+    // Get the selected point coordinates
+    const selectedX = parseFloat(closestPoint.flowRate);
+    const selectedY = parseFloat(closestPoint.totalPressure);
+
     // Prepare data for pressure chart
     const pressureChartData = {
       datasets: [
@@ -146,8 +152,8 @@ const FlowSearch = () => {
         {
           label: 'Selected Point',
           data: [{
-            x: parseFloat(closestPoint.flowRate),
-            y: parseFloat(closestPoint.totalPressure)
+            x: selectedX,
+            y: selectedY
           }],
           backgroundColor: 'rgb(255, 99, 132)',
           borderColor: 'rgb(255, 99, 132)',
@@ -182,7 +188,7 @@ const FlowSearch = () => {
         {
           label: 'Selected Point',
           data: [{
-            x: parseFloat(closestPoint.flowRate),
+            x: selectedX,
             y: parseFloat(closestPoint.brakePower)
           }],
           backgroundColor: 'rgb(54, 162, 235)',
@@ -217,6 +223,21 @@ const FlowSearch = () => {
 
     if (isNaN(flowRateNum) || isNaN(staticPressureNum)) {
       setError('Please enter valid numbers');
+      return;
+    }
+
+    // Calculate total pressure (T) using the given equation
+    const T = 34.737 * Math.pow(flowRateNum, 2) + 24.728 * flowRateNum - 32.024;
+    
+    // Calculate dynamic pressure
+    const dynamicPressure = calculateDynamicPressure(flowRateNum);
+    
+    // Calculate maximum allowed static pressure
+    const maxStaticPressure = T - dynamicPressure;
+
+    // Validate static pressure
+    if (staticPressureNum > maxStaticPressure) {
+      setError(`Static Pressure cannot exceed ${maxStaticPressure.toFixed(4)}. The maximum allowed value is based on the flow rate equation.`);
       return;
     }
 
@@ -297,6 +318,44 @@ const FlowSearch = () => {
             ];
           }
         }
+      },
+      annotation: {
+        annotations: {
+          line1: {
+            type: 'line',
+            xMin: searchResults[0]?.flowRate,
+            xMax: searchResults[0]?.flowRate,
+            yMin: 0,
+            yMax: searchResults[0]?.totalPressure,
+            borderColor: 'rgba(255, 99, 132, 0.5)',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            label: {
+              display: true,
+              content: parseFloat(searchResults[0]?.flowRate).toFixed(4),
+              position: 'start',
+              backgroundColor: 'rgba(255, 99, 132, 0.5)',
+              color: 'white'
+            }
+          },
+          line2: {
+            type: 'line',
+            xMin: 0,
+            xMax: searchResults[0]?.flowRate,
+            yMin: searchResults[0]?.totalPressure,
+            yMax: searchResults[0]?.totalPressure,
+            borderColor: 'rgba(255, 99, 132, 0.5)',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            label: {
+              display: true,
+              content: parseFloat(searchResults[0]?.totalPressure).toFixed(4),
+              position: 'start',
+              backgroundColor: 'rgba(255, 99, 132, 0.5)',
+              color: 'white'
+            }
+          }
+        }
       }
     },
     scales: {
@@ -318,7 +377,9 @@ const FlowSearch = () => {
         },
         ticks: {
           color: 'white'
-        }
+        },
+        beginAtZero: true,
+        min: 0
       },
       y: {
         type: 'linear',
@@ -337,7 +398,9 @@ const FlowSearch = () => {
         },
         ticks: {
           color: 'white'
-        }
+        },
+        beginAtZero: true,
+        min: 0
       }
     },
     interaction: {
@@ -358,6 +421,44 @@ const FlowSearch = () => {
       title: {
         ...chartOptions.plugins.title,
         text: 'Flow Rate vs Brake Power'
+      },
+      annotation: {
+        annotations: {
+          line1: {
+            type: 'line',
+            xMin: searchResults[0]?.flowRate,
+            xMax: searchResults[0]?.flowRate,
+            yMin: 0,
+            yMax: searchResults[0]?.brakePower,
+            borderColor: 'rgba(54, 162, 235, 0.5)',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            label: {
+              display: true,
+              content: parseFloat(searchResults[0]?.flowRate).toFixed(4),
+              position: 'start',
+              backgroundColor: 'rgba(54, 162, 235, 0.5)',
+              color: 'white'
+            }
+          },
+          line2: {
+            type: 'line',
+            xMin: 0,
+            xMax: searchResults[0]?.flowRate,
+            yMin: searchResults[0]?.brakePower,
+            yMax: searchResults[0]?.brakePower,
+            borderColor: 'rgba(54, 162, 235, 0.5)',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            label: {
+              display: true,
+              content: parseFloat(searchResults[0]?.brakePower).toFixed(4),
+              position: 'start',
+              backgroundColor: 'rgba(54, 162, 235, 0.5)',
+              color: 'white'
+            }
+          }
+        }
       }
     },
     scales: {
@@ -367,7 +468,9 @@ const FlowSearch = () => {
         title: {
           ...chartOptions.scales.y.title,
           text: 'Brake Power'
-        }
+        },
+        beginAtZero: true,
+        min: 0
       }
     }
   };

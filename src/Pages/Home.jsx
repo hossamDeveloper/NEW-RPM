@@ -18,7 +18,7 @@ const Home = () => {
       >
         <img src={logo} alt="RPM Logo" className=" h-32 mb-4 drop-shadow-xl" />
         <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-4 drop-shadow-lg text-center">
-          Welcome to <span className="text-[#00B4D8]">RPM Calculator</span>
+          Welcome to <span className="text-[#00B4D8]">Nobel Software</span>
         </h1>
         <p className="text-white/90 text-lg md:text-xl max-w-2xl text-center mb-2">
           Your all-in-one platform for advanced flow calculations, search, and
@@ -27,15 +27,15 @@ const Home = () => {
       </motion.div>
 
       {/* Main Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl w-full px-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl w-full px-4 mx-auto">
         {userRole === "admin" && (
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 flex flex-col items-center shadow-lg justify-between text-center"
+            className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 flex flex-col items-center justify-center shadow-lg text-center h-full md:justify-self-end"
           >
-            <div>
+            <div className="flex flex-col items-center justify-center flex-grow">
               <h2 className="text-2xl font-bold text-white mb-2">
                 Flow Calculate
               </h2>
@@ -57,9 +57,11 @@ const Home = () => {
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, delay: 0.4 }}
-          className="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 items-center shadow-lg flex flex-col justify-between text-center"
+          className={`bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 shadow-lg flex flex-col justify-center text-center h-full ${
+            userRole !== "admin" ? "md:col-span-2" : "md:justify-self-start"
+          }`}
         >
-          <div>
+          <div className="flex flex-col items-center justify-center flex-grow">
             <h2 className="text-2xl font-bold text-white mb-2">Flow Search</h2>
             <p className="text-white/90 mb-6 text-center">
               Search and view existing flow calculations with powerful filters
@@ -70,7 +72,7 @@ const Home = () => {
             to="/flow-search"
             className="w-full text-center py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#03178C] to-[#034AA6] hover:from-[#034AA6] hover:to-[#03178C] transition-all duration-200 shadow-lg"
           >
-            Start Searching
+            Start Selecting
           </Link>
         </motion.div>
       </div>

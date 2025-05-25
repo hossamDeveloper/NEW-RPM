@@ -254,6 +254,36 @@ const FlowCalculate = () => {
       (keyPoints[4].flowRate - keyPoints[3].flowRate) / 250
     ];
 
+    // Calculate the valid pressure range for each flow rate
+    const calculateValidPressure = (flowRate) => {
+      // Calculate pressure using quadratic equation
+      const pressure = (coeffs.a * flowRate * flowRate) + 
+                      (coeffs.b * flowRate) + 
+                      coeffs.c;
+
+      // Find the nearest key points for interpolation
+      let lowerPoint = keyPoints[0];
+      let upperPoint = keyPoints[keyPoints.length - 1];
+
+      for (let i = 0; i < keyPoints.length - 1; i++) {
+        if (flowRate >= keyPoints[i].flowRate && flowRate <= keyPoints[i + 1].flowRate) {
+          lowerPoint = keyPoints[i];
+          upperPoint = keyPoints[i + 1];
+          break;
+        }
+      }
+
+      // Calculate interpolated pressure
+      const interpolatedPressure = lowerPoint.totalPressure + 
+        ((upperPoint.totalPressure - lowerPoint.totalPressure) * 
+        (flowRate - lowerPoint.flowRate) / 
+        (upperPoint.flowRate - lowerPoint.flowRate));
+
+      // Use the interpolated pressure if it's closer to the quadratic curve
+      // This ensures we stay close to both the quadratic curve and the key points
+      return Math.abs(pressure - interpolatedPressure) < 0.1 ? pressure : interpolatedPressure;
+    };
+
     for (let i = 0; i < 1000; i++) {
       let flowRate, totalPressure, efficiency;
 
@@ -275,27 +305,8 @@ const FlowCalculate = () => {
           flowRate = keyPoints[3].flowRate + (flowSteps[3] * (i - 750));
         }
 
-        // Calculate total pressure using quadratic equation
-      if (coeffs && coeffs.a !== undefined) {
-        totalPressure = (coeffs.a * flowRate * flowRate) + 
-                       (coeffs.b * flowRate) + 
-                       coeffs.c;
-      } else {
-          // Linear interpolation between key points
-          if (i < 250) {
-            totalPressure = keyPoints[0].totalPressure + 
-                          ((keyPoints[1].totalPressure - keyPoints[0].totalPressure) * i / 249);
-          } else if (i < 500) {
-            totalPressure = keyPoints[1].totalPressure + 
-                          ((keyPoints[2].totalPressure - keyPoints[1].totalPressure) * (i - 250) / 250);
-          } else if (i < 750) {
-            totalPressure = keyPoints[2].totalPressure + 
-                          ((keyPoints[3].totalPressure - keyPoints[2].totalPressure) * (i - 500) / 250);
-          } else {
-            totalPressure = keyPoints[3].totalPressure + 
-                          ((keyPoints[4].totalPressure - keyPoints[3].totalPressure) * (i - 750) / 250);
-          }
-        }
+        // Calculate pressure using the new validation function
+        totalPressure = calculateValidPressure(flowRate);
 
         // Calculate efficiency using the existing interpolation function
         efficiency = generateInterpolatedEfficiency(i, sortedPoints);
@@ -451,12 +462,13 @@ const FlowCalculate = () => {
           animate={{ opacity: 1, y: 0 }}
           className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 shadow-xl border border-white/20"
         >
-          <h1 className="text-3xl font-bold text-white mb-8 text-center">Flow Calculator</h1>
+          <h1 className="text-3xl font-bold text-white mb-8 text-center">Selector</h1>
           
           {/* Input Form */}
           <div className="space-y-4 mb-8">
             <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
-              <div className="grid grid-cols-5 gap-4 text-white/80 font-medium mb-2">
+              {/* Headers - Hidden on mobile */}
+              <div className="hidden md:grid grid-cols-5 gap-4 text-white/80 font-medium mb-2">
                 <div>Point</div>
                 <div>RPM</div>
                 <div>Flow Rate</div>
@@ -469,10 +481,33 @@ const FlowCalculate = () => {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className="grid grid-cols-5 gap-4 items-center py-2 border-b border-white/10 last:border-0"
+                  className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center py-4 border-b border-white/10 last:border-0"
                 >
+                  {/* Mobile View */}
+                  <div className="md:hidden grid grid-cols-2 gap-2 mb-2">
+                    <div className="font-medium text-white/80">Point:</div>
                   <div className="font-medium text-white">Point {index + 1}</div>
+                  </div>
+                  
+                  {/* Desktop View */}
+                  <div className="hidden md:block font-medium text-white">Point {index + 1}</div>
+                  
+                  {/* Mobile View */}
+                  <div className="md:hidden grid grid-cols-2 gap-2">
+                    <div className="font-medium text-white/80">RPM:</div>
                   <div>
+                      <input
+                        type="number"
+                        value={point.rpm}
+                        onChange={(e) => handleInputChange(index, 'rpm', e.target.value)}
+                        className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
+                        placeholder="RPM"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Desktop View */}
+                  <div className="hidden md:block">
                     <input
                       type="number"
                       value={point.rpm}
@@ -481,7 +516,23 @@ const FlowCalculate = () => {
                       placeholder="RPM"
                     />
                   </div>
+
+                  {/* Mobile View */}
+                  <div className="md:hidden grid grid-cols-2 gap-2">
+                    <div className="font-medium text-white/80">Flow Rate:</div>
                   <div>
+                      <input
+                        type="number"
+                        value={point.flowRate}
+                        onChange={(e) => handleInputChange(index, 'flowRate', e.target.value)}
+                        className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
+                        placeholder="Flow Rate"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Desktop View */}
+                  <div className="hidden md:block">
                     <input
                       type="number"
                       value={point.flowRate}
@@ -490,7 +541,23 @@ const FlowCalculate = () => {
                       placeholder="Flow Rate"
                     />
                   </div>
+
+                  {/* Mobile View */}
+                  <div className="md:hidden grid grid-cols-2 gap-2">
+                    <div className="font-medium text-white/80">Total Pressure:</div>
                   <div>
+                      <input
+                        type="number"
+                        value={point.totalPressure}
+                        onChange={(e) => handleInputChange(index, 'totalPressure', e.target.value)}
+                        className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
+                        placeholder="Total Pressure"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Desktop View */}
+                  <div className="hidden md:block">
                     <input
                       type="number"
                       value={point.totalPressure}
@@ -499,7 +566,23 @@ const FlowCalculate = () => {
                       placeholder="Total Pressure"
                     />
                   </div>
+
+                  {/* Mobile View */}
+                  <div className="md:hidden grid grid-cols-2 gap-2">
+                    <div className="font-medium text-white/80">Efficiency:</div>
                   <div>
+                      <input
+                        type="number"
+                        value={point.efficiency}
+                        onChange={(e) => handleInputChange(index, 'efficiency', e.target.value)}
+                        className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
+                        placeholder="Efficiency"
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Desktop View */}
+                  <div className="hidden md:block">
                     <input
                       type="number"
                       value={point.efficiency}
@@ -545,8 +628,7 @@ const FlowCalculate = () => {
               {/* Next RPM Input */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-white/80 mb-2">Enter Next RPM</label>
-                <div className="flex flex-col gap-2">
-                  <div className="flex gap-4">
+                <div className="flex flex-col sm:flex-row gap-4">
                     <input
                       type="number"
                       value={nextRpm}
@@ -554,14 +636,14 @@ const FlowCalculate = () => {
                         setNextRpm(e.target.value);
                         setError('');
                       }}
-                      className="flex-1 bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
+                    className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
                       placeholder="Enter RPM"
                     />
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={handleGenerateNextRpm}
-                      className=" py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#03178C] to-[#034AA6] hover:from-[#034AA6] hover:to-[#03178C] transition-all duration-200 shadow-lg"
+                    className="w-full sm:w-auto py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#03178C] to-[#034AA6] hover:from-[#034AA6] hover:to-[#03178C] transition-all duration-200 shadow-lg"
                       >
                       Generate
                     </motion.button>
@@ -575,7 +657,6 @@ const FlowCalculate = () => {
                       {error}
                     </motion.p>
                   )}
-                </div>
               </div>
 
               {/* RPM Selection */}
