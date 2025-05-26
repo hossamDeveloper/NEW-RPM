@@ -410,6 +410,10 @@ const FlowSearch = () => {
     elements: {
       point: {
         zIndex: 2
+      },
+      line: {
+        tension: 0.4,
+        cubicInterpolationMode: 'monotone'
       }
     }
   };

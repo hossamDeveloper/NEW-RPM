@@ -124,9 +124,9 @@ const FlowCalculate = () => {
   const loadExampleData = () => {
     const exampleData = [
       { rpm: 900, flowRate: 1.575, totalPressure: 97.2, outletVelocity: 0.190774, brakePower: 0.190773692, efficiency: 65 },
-      { rpm: 900, flowRate: 1.9125, totalPressure: 93.15, outletVelocity: 0.206144, brakePower: 0.206144277, efficiency: 70 },
+      { rpm: 900, flowRate: 1.9125, totalPressure: 	87.47, outletVelocity: 0.206144, brakePower: 0.206144277, efficiency: 70 },
       { rpm: 900, flowRate: 2.16, totalPressure: 72.9, outletVelocity: 0.177147, brakePower: 0.177147, efficiency: 72 },
-      { rpm: 900, flowRate: 2.376, totalPressure: 56.7, outletVelocity: 0.155889, brakePower: 0.15588936, efficiency: 70 },
+      { rpm: 900, flowRate: 2.376, totalPressure: 55.065, outletVelocity: 0.155889, brakePower: 0.15588936, efficiency: 70 },
       { rpm: 900, flowRate: 2.52, totalPressure: 40.5, outletVelocity: 0.13122, brakePower: 0.13122, efficiency: 63 }
     ];
     setDataPoints(exampleData);
@@ -246,22 +246,42 @@ const FlowCalculate = () => {
       { index: 999, flowRate: parseFloat(lastPoint.flowRate), totalPressure: parseFloat(lastPoint.totalPressure), efficiency: parseFloat(lastPoint.efficiency) }
     ];
 
-    // Calculate flow rate steps between key points
-    const flowSteps = [
-      (keyPoints[1].flowRate - keyPoints[0].flowRate) / 249,
-      (keyPoints[2].flowRate - keyPoints[1].flowRate) / 250,
-      (keyPoints[3].flowRate - keyPoints[2].flowRate) / 250,
-      (keyPoints[4].flowRate - keyPoints[3].flowRate) / 250
-    ];
+    // Calculate flow rate steps between key points with non-linear distribution
+    const calculateFlowRate = (index) => {
+      // Find which segment this index belongs to
+      let segment = 0;
+      for (let i = 1; i < keyPoints.length; i++) {
+        if (index < keyPoints[i].index) {
+          segment = i - 1;
+          break;
+        }
+      }
 
-    // Calculate the valid pressure range for each flow rate
-    const calculateValidPressure = (flowRate) => {
-      // Calculate pressure using quadratic equation
-      const pressure = (coeffs.a * flowRate * flowRate) + 
-                      (coeffs.b * flowRate) + 
-                      coeffs.c;
+      const startPoint = keyPoints[segment];
+      const endPoint = keyPoints[segment + 1];
+      const segmentLength = endPoint.index - startPoint.index;
+      const progress = (index - startPoint.index) / segmentLength;
 
-      // Find the nearest key points for interpolation
+      // Use cubic interpolation for smoother curves
+      const t = progress;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      
+      // Cubic interpolation formula
+      const flowRate = startPoint.flowRate * (1 - 3*t2 + 2*t3) +
+                      endPoint.flowRate * (3*t2 - 2*t3);
+
+      return flowRate;
+    };
+
+    // Calculate pressure using both quadratic and interpolation
+    const calculatePressure = (flowRate, index) => {
+      // Quadratic pressure - this is our base curve
+      const quadraticPressure = (coeffs.a * flowRate * flowRate) + 
+                              (coeffs.b * flowRate) + 
+                              coeffs.c;
+
+      // Find nearest key points for interpolation
       let lowerPoint = keyPoints[0];
       let upperPoint = keyPoints[keyPoints.length - 1];
 
@@ -273,15 +293,48 @@ const FlowCalculate = () => {
         }
       }
 
-      // Calculate interpolated pressure
-      const interpolatedPressure = lowerPoint.totalPressure + 
-        ((upperPoint.totalPressure - lowerPoint.totalPressure) * 
-        (flowRate - lowerPoint.flowRate) / 
-        (upperPoint.flowRate - lowerPoint.flowRate));
+      // Calculate interpolated pressure with cubic interpolation
+      const t = (flowRate - lowerPoint.flowRate) / (upperPoint.flowRate - lowerPoint.flowRate);
+      const t2 = t * t;
+      const t3 = t2 * t;
+      
+      const interpolatedPressure = lowerPoint.totalPressure * (1 - 3*t2 + 2*t3) +
+                                 upperPoint.totalPressure * (3*t2 - 2*t3);
 
-      // Use the interpolated pressure if it's closer to the quadratic curve
-      // This ensures we stay close to both the quadratic curve and the key points
-      return Math.abs(pressure - interpolatedPressure) < 0.1 ? pressure : interpolatedPressure;
+      // Calculate the maximum allowed pressure based on the quadratic curve
+      // Reduce the allowed deviation to 2% to keep points closer to the curve
+      const maxAllowedPressure = quadraticPressure * 1.02;
+      const minAllowedPressure = quadraticPressure * 0.98;
+
+      // Ensure the interpolated pressure stays within the allowed range
+      let finalPressure = interpolatedPressure;
+      if (finalPressure > maxAllowedPressure) {
+        finalPressure = maxAllowedPressure;
+      } else if (finalPressure < minAllowedPressure) {
+        finalPressure = minAllowedPressure;
+      }
+
+      // Calculate distance from key points to determine blend factor
+      const distanceFromKeyPoint = Math.min(
+        Math.abs(flowRate - lowerPoint.flowRate),
+        Math.abs(flowRate - upperPoint.flowRate)
+      );
+      const maxDistance = (upperPoint.flowRate - lowerPoint.flowRate) / 2;
+      
+      // Adjust blend factor to favor quadratic curve more
+      // This will keep points closer to the quadratic curve
+      const blendFactor = Math.min(0.6, 0.2 + (distanceFromKeyPoint / maxDistance) * 0.4);
+
+      // Calculate final pressure with stronger quadratic influence
+      const finalPressureValue = (quadraticPressure * (1 - blendFactor)) + (finalPressure * blendFactor);
+
+      // Final validation to ensure the point is not an outlier
+      const deviation = Math.abs(finalPressureValue - quadraticPressure) / quadraticPressure;
+      if (deviation > 0.02) { // If deviation is more than 2%
+        return quadraticPressure; // Return the quadratic pressure value instead
+      }
+
+      return finalPressureValue;
     };
 
     for (let i = 0; i < 1000; i++) {
@@ -294,19 +347,11 @@ const FlowCalculate = () => {
         totalPressure = keyPoint.totalPressure;
         efficiency = keyPoint.efficiency;
       } else {
-        // Calculate flow rate based on which segment we're in
-        if (i < 250) {
-          flowRate = keyPoints[0].flowRate + (flowSteps[0] * i);
-        } else if (i < 500) {
-          flowRate = keyPoints[1].flowRate + (flowSteps[1] * (i - 250));
-        } else if (i < 750) {
-          flowRate = keyPoints[2].flowRate + (flowSteps[2] * (i - 500));
-        } else {
-          flowRate = keyPoints[3].flowRate + (flowSteps[3] * (i - 750));
-        }
-
-        // Calculate pressure using the new validation function
-        totalPressure = calculateValidPressure(flowRate);
+        // Calculate flow rate using cubic interpolation
+        flowRate = calculateFlowRate(i);
+        
+        // Calculate pressure using blended approach
+        totalPressure = calculatePressure(flowRate, i);
 
         // Calculate efficiency using the existing interpolation function
         efficiency = generateInterpolatedEfficiency(i, sortedPoints);
