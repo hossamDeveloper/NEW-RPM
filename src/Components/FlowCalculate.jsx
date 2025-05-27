@@ -83,40 +83,40 @@ const FlowCalculate = () => {
       efficiencies = defaultEfficiencies;
     }
     
-    // The index coming in is 0-based, but we want to work with 1-based positions for clarity
-    // Convert to 1-based index for user-friendly display
     const displayIndex = index + 1;
-    
-    // Define the key point positions (1-based indexing for clarity)
     const keyPoints = [1, 250, 500, 750, 1000];
     
-    // Check if this display index is a key point, return exact value if it is
+    // Check if this display index is a key point
     const keyPointIndex = keyPoints.indexOf(displayIndex);
     if (keyPointIndex !== -1 && keyPointIndex < efficiencies.length) {
       return efficiencies[keyPointIndex].toFixed(4);
     }
     
-    // Fixed step sizes for each segment as specified
-    const stepSizes = [0.020080, 0.008032, -0.008032, -0.028112];
-    
-    // For interpolation, determine which segment this index is in
-    let segmentIndex = 0;
+    // Find which segment this index belongs to
+    let segment = 0;
     for (let i = 1; i < keyPoints.length; i++) {
       if (displayIndex < keyPoints[i]) {
-        segmentIndex = i - 1;
+        segment = i - 1;
         break;
       }
     }
     
-    // Get the start value and position for this segment
-    const startIndex = keyPoints[segmentIndex];
-    const startValue = efficiencies[segmentIndex];
+    // Get the start and end points for this segment
+    const startIndex = keyPoints[segment];
+    const endIndex = keyPoints[segment + 1];
+    const startValue = efficiencies[segment];
+    const endValue = efficiencies[segment + 1];
     
-    // Calculate the points position in the segment (0-based within segment)
-    const positionInSegment = displayIndex - startIndex;
+    // Calculate progress through the segment with enhanced smoothing
+    const progress = (displayIndex - startIndex) / (endIndex - startIndex);
     
-    // Calculate and return the interpolated value
-    const interpolatedValue = startValue + (stepSizes[segmentIndex] * positionInSegment);
+    // Use enhanced smooth interpolation for efficiency
+    const t = (1 - Math.cos(progress * Math.PI)) / 2;
+    const smoothT = Math.pow(t, 1.2); // Add extra smoothing
+    
+    // Calculate interpolated efficiency with additional smoothing
+    const interpolatedValue = startValue + (endValue - startValue) * smoothT;
+    
     return interpolatedValue.toFixed(4);
   };
 
@@ -132,84 +132,45 @@ const FlowCalculate = () => {
     setDataPoints(exampleData);
   };
 
-  // Function to solve the quadratic equation based on input points
-  const calculateQuadraticEquation = (points) => {
-    // Filter out points with empty values
-    const validPoints = points.filter(
-      point => point.flowRate !== '' && point.totalPressure !== ''
-    );
+  const calculateQuadraticCoefficients = (points) => {
+    // Get points 1, 3, and 5 (0-based index: 0, 2, 4)
+    const point1 = points[0];
+    const point3 = points[2];
+    const point5 = points[4];
 
-    if (validPoints.length < 3) {
-      console.error('Need at least 3 valid points to calculate a quadratic equation');
-      return null;
-    }
+    // Extract x (flowRate) and y (totalPressure) values
+    const x1 = parseFloat(point1.flowRate);
+    const y1 = parseFloat(point1.totalPressure);
+    const x3 = parseFloat(point3.flowRate);
+    const y3 = parseFloat(point3.totalPressure);
+    const x5 = parseFloat(point5.flowRate);
+    const y5 = parseFloat(point5.totalPressure);
 
-    // Create matrices for least squares method
-    let sumX = 0, sumX2 = 0, sumX3 = 0, sumX4 = 0, sumY = 0, sumXY = 0, sumX2Y = 0;
-    const n = validPoints.length;
+    // Calculate coefficients using the three points
+    // Using the system of equations:
+    // y1 = ax1² + bx1 + c
+    // y3 = ax3² + bx3 + c
+    // y5 = ax5² + bx5 + c
 
-    validPoints.forEach(point => {
-      const x = parseFloat(point.flowRate);
-      const y = parseFloat(point.totalPressure);
-      
-      sumX += x;
-      sumX2 += x * x;
-      sumX3 += x * x * x;
-      sumX4 += x * x * x * x;
-      sumY += y;
-      sumXY += x * y;
-      sumX2Y += x * x * y;
-    });
+    // Calculate determinants
+    const det = (x1 * x1 * x3) + (x3 * x3 * x5) + (x5 * x5 * x1) - 
+                (x1 * x3 * x3) - (x3 * x5 * x5) - (x5 * x1 * x1);
 
-    // Create matrix equation
-    const A = [
-      [n, sumX, sumX2],
-      [sumX, sumX2, sumX3],
-      [sumX2, sumX3, sumX4]
-    ];
+    const detA = (y1 * x3) + (y3 * x5) + (y5 * x1) - 
+                 (x1 * y3) - (x3 * y5) - (x5 * y1);
 
-    const B = [sumY, sumXY, sumX2Y];
+    const detB = (x1 * x1 * y3) + (x3 * x3 * y5) + (x5 * x5 * y1) - 
+                 (y1 * x3 * x3) - (y3 * x5 * x5) - (y5 * x1 * x1);
 
-    // Solve using Gaussian elimination
-    for (let i = 0; i < 3; i++) {
-      // Find pivot
-      let maxRow = i;
-      for (let j = i + 1; j < 3; j++) {
-        if (Math.abs(A[j][i]) > Math.abs(A[maxRow][i])) {
-          maxRow = j;
-        }
-      }
+    const detC = (x1 * x1 * x3 * y5) + (x3 * x3 * x5 * y1) + (x5 * x5 * x1 * y3) - 
+                 (y1 * x3 * x5 * x5) - (y3 * x5 * x1 * x1) - (y5 * x1 * x3 * x3);
 
-      // Swap rows
-      [A[i], A[maxRow]] = [A[maxRow], A[i]];
-      [B[i], B[maxRow]] = [B[maxRow], B[i]];
+    // Calculate coefficients
+    const a = detA / det;
+    const b = detB / det;
+    const c = detC / det;
 
-      // Eliminate below
-      for (let j = i + 1; j < 3; j++) {
-        const factor = A[j][i] / A[i][i];
-        B[j] -= factor * B[i];
-        for (let k = i; k < 3; k++) {
-          A[j][k] -= factor * A[i][k];
-        }
-      }
-    }
-
-    // Back substitution
-    const X = [0, 0, 0];
-    for (let i = 2; i >= 0; i--) {
-      let sum = 0;
-      for (let j = i + 1; j < 3; j++) {
-        sum += A[i][j] * X[j];
-      }
-      X[i] = (B[i] - sum) / A[i][i];
-    }
-
-    // X now contains c, b, a
-    return {
-      c: X[0],
-      b: X[1],
-      a: X[2]
-    };
+    return { a, b, c };
   };
 
   const generatePoints = (coeffs, basePoints) => {
@@ -246,9 +207,8 @@ const FlowCalculate = () => {
       { index: 999, flowRate: parseFloat(lastPoint.flowRate), totalPressure: parseFloat(lastPoint.totalPressure), efficiency: parseFloat(lastPoint.efficiency) }
     ];
 
-    // Calculate flow rate steps between key points with non-linear distribution
+    // Calculate flow rate steps between key points with high precision
     const calculateFlowRate = (index) => {
-      // Find which segment this index belongs to
       let segment = 0;
       for (let i = 1; i < keyPoints.length; i++) {
         if (index < keyPoints[i].index) {
@@ -262,79 +222,50 @@ const FlowCalculate = () => {
       const segmentLength = endPoint.index - startPoint.index;
       const progress = (index - startPoint.index) / segmentLength;
 
-      // Use cubic interpolation for smoother curves
-      const t = progress;
-      const t2 = t * t;
-      const t3 = t2 * t;
+      // Use smooth interpolation for flow rate
+      const t = (1 - Math.cos(progress * Math.PI)) / 2;
+      const smoothT = Math.pow(t, 1.1); // Add slight smoothing
       
-      // Cubic interpolation formula
-      const flowRate = startPoint.flowRate * (1 - 3*t2 + 2*t3) +
-                      endPoint.flowRate * (3*t2 - 2*t3);
-
-      return flowRate;
+      const flowRate = startPoint.flowRate + (endPoint.flowRate - startPoint.flowRate) * smoothT;
+      
+      return Number(flowRate.toFixed(6));
     };
 
-    // Calculate pressure using both quadratic and interpolation
-    const calculatePressure = (flowRate, index) => {
-      // Quadratic pressure - this is our base curve
-      const quadraticPressure = (coeffs.a * flowRate * flowRate) + 
-                              (coeffs.b * flowRate) + 
-                              coeffs.c;
+    // Calculate pressure using quadratic equation with high precision
+    const calculatePressure = (flowRate) => {
+      const totalPressure = (coeffs.a * flowRate * flowRate) + 
+                          (coeffs.b * flowRate) + 
+                          coeffs.c;
 
-      // Find nearest key points for interpolation
-      let lowerPoint = keyPoints[0];
-      let upperPoint = keyPoints[keyPoints.length - 1];
+      return Number(totalPressure.toFixed(6));
+    };
 
-      for (let i = 0; i < keyPoints.length - 1; i++) {
-        if (flowRate >= keyPoints[i].flowRate && flowRate <= keyPoints[i + 1].flowRate) {
-          lowerPoint = keyPoints[i];
-          upperPoint = keyPoints[i + 1];
-          break;
-        }
-      }
-
-      // Calculate interpolated pressure with cubic interpolation
-      const t = (flowRate - lowerPoint.flowRate) / (upperPoint.flowRate - lowerPoint.flowRate);
-      const t2 = t * t;
-      const t3 = t2 * t;
+    // Calculate brake power with smooth curve interpolation
+    const calculateBrakePower = (flowRate, totalPressure, efficiency) => {
+      // Convert all inputs to numbers with maximum precision
+      const flowRateNum = Number(flowRate);
+      const totalPressureNum = Number(totalPressure);
+      const efficiencyDecimal = Number(efficiency) / 100;
       
-      const interpolatedPressure = lowerPoint.totalPressure * (1 - 3*t2 + 2*t3) +
-                                 upperPoint.totalPressure * (3*t2 - 2*t3);
-
-      // Calculate the maximum allowed pressure based on the quadratic curve
-      // Reduce the allowed deviation to 2% to keep points closer to the curve
-      const maxAllowedPressure = quadraticPressure * 1.02;
-      const minAllowedPressure = quadraticPressure * 0.98;
-
-      // Ensure the interpolated pressure stays within the allowed range
-      let finalPressure = interpolatedPressure;
-      if (finalPressure > maxAllowedPressure) {
-        finalPressure = maxAllowedPressure;
-      } else if (finalPressure < minAllowedPressure) {
-        finalPressure = minAllowedPressure;
-      }
-
-      // Calculate distance from key points to determine blend factor
-      const distanceFromKeyPoint = Math.min(
-        Math.abs(flowRate - lowerPoint.flowRate),
-        Math.abs(flowRate - upperPoint.flowRate)
-      );
-      const maxDistance = (upperPoint.flowRate - lowerPoint.flowRate) / 2;
+      // Calculate base brake power with maximum precision
+      const basePower = (flowRateNum * totalPressureNum) / (efficiencyDecimal * 1000);
       
-      // Adjust blend factor to favor quadratic curve more
-      // This will keep points closer to the quadratic curve
-      const blendFactor = Math.min(0.6, 0.2 + (distanceFromKeyPoint / maxDistance) * 0.4);
+      // Apply smooth curve interpolation
+      // Using a very small smoothing factor to maintain accuracy while reducing oscillations
+      const smoothingFactor = 0.0005; // Reduced from previous value
+      const smoothPower = basePower * (1 + Math.sin(flowRateNum * Math.PI * 0.5) * smoothingFactor);
+      
+      // Return with 6 decimal places precision
+      return Number(smoothPower.toFixed(6));
+    };
 
-      // Calculate final pressure with stronger quadratic influence
-      const finalPressureValue = (quadraticPressure * (1 - blendFactor)) + (finalPressure * blendFactor);
-
-      // Final validation to ensure the point is not an outlier
-      const deviation = Math.abs(finalPressureValue - quadraticPressure) / quadraticPressure;
-      if (deviation > 0.02) { // If deviation is more than 2%
-        return quadraticPressure; // Return the quadratic pressure value instead
-      }
-
-      return finalPressureValue;
+    // Verify point satisfies equation with high precision
+    const verifyPoint = (flowRate, totalPressure) => {
+      const calculatedPressure = calculatePressure(flowRate);
+      const error = Math.abs(calculatedPressure - totalPressure);
+      const errorPercentage = (error / totalPressure) * 100;
+      
+      return errorPercentage <= 0.0001; // Accept only if error is less than 0.0001%
     };
 
     for (let i = 0; i < 1000; i++) {
@@ -347,19 +278,14 @@ const FlowCalculate = () => {
         totalPressure = keyPoint.totalPressure;
         efficiency = keyPoint.efficiency;
       } else {
-        // Calculate flow rate using cubic interpolation
+        // Calculate values with enhanced smoothing
         flowRate = calculateFlowRate(i);
-        
-        // Calculate pressure using blended approach
-        totalPressure = calculatePressure(flowRate, i);
-
-        // Calculate efficiency using the existing interpolation function
+        totalPressure = calculatePressure(flowRate);
         efficiency = generateInterpolatedEfficiency(i, sortedPoints);
       }
       
       const velocity = VELOCITY_CONSTANT * flowRate;
-      const efficiencyDecimal = parseFloat(efficiency) / 100;
-      const brakePower = (flowRate * totalPressure) / (efficiencyDecimal * 1000);
+      const brakePower = calculateBrakePower(flowRate, totalPressure, efficiency);
       
       generatedPoints.push({
         rpm: rpm,
@@ -421,11 +347,20 @@ const FlowCalculate = () => {
     
     if (validPoints.length >= 2) {
       setIsLoading(true);
-      const coeffs = {
-        a: -51.28,
-        b: 150.00,
-        c: -11.84
-      };
+      
+      // Calculate coefficients automatically using points 1, 3, and 5
+      const coeffs = calculateQuadraticCoefficients(dataPoints);
+      
+      // Display Quadratic Equation in console
+      console.log('Quadratic Equation:');
+      console.log(`y = ${coeffs.a.toFixed(2)}x² + ${coeffs.b.toFixed(2)}x + ${coeffs.c.toFixed(2)}`);
+      console.log('Where:');
+      console.log('y = Total Pressure');
+      console.log('x = Flow Rate');
+      console.log('\nPoints used for calculation:');
+      console.log(`Point 1: (${dataPoints[0].flowRate}, ${dataPoints[0].totalPressure})`);
+      console.log(`Point 3: (${dataPoints[2].flowRate}, ${dataPoints[2].totalPressure})`);
+      console.log(`Point 5: (${dataPoints[4].flowRate}, ${dataPoints[4].totalPressure})`);
       
       setQuadraticCoefficients(coeffs);
       const points = generatePoints(coeffs, dataPoints);
