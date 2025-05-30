@@ -9,5 +9,8 @@ export default defineConfig({
     alias: {
       '@components': resolve(__dirname, 'src/Components')
     }
+  },
+  server: {
+    port: 3000
   }
 })

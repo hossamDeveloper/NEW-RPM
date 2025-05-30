@@ -8,13 +8,9 @@ import Login from './Components/Login';
 import Loading from './Components/Loading';
 import { Provider } from 'react-redux';
 import { store } from './redux/store';
+import Control from './Components/Control';
 
-export const AuthContext = createContext({
-  isAuthenticated: false,
-  userRole: null,
-  handleLogin: () => {},
-  handleLogout: () => {}
-});
+export const AuthContext = createContext();
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -34,12 +30,12 @@ function App() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsLoading(false);
-    }, 2500); // زيادة وقت التحميل قليلاً
+    }, 2500);
 
     return () => clearTimeout(timer);
   }, []);
 
-  const handleLogin = (role) => {
+  const handleLogin = (username, role) => {
     setIsAuthenticated(true);
     setUserRole(role);
     localStorage.setItem('userData', JSON.stringify({ isAuthenticated: true, role }));
@@ -49,19 +45,6 @@ function App() {
     setIsAuthenticated(false);
     setUserRole(null);
     localStorage.removeItem('userData');
-  };
-
-  // حماية المسارات
-  const ProtectedRoute = ({ children, allowedRoles }) => {
-    if (!isAuthenticated) {
-      return <Navigate to="/login" />;
-    }
-
-    if (allowedRoles && !allowedRoles.includes(userRole)) {
-      return <Navigate to="/" />;
-    }
-
-    return children;
   };
 
   const contextValue = {
@@ -82,24 +65,58 @@ function App() {
               <>
                 {isAuthenticated && <Navbar />}
                 <Routes>
-                  <Route path="/login" element={
-                    isAuthenticated ? <Navigate to="/" /> : <Login />
-                  } />
-                  <Route path="/" element={
-                    <ProtectedRoute>
-                      <Home />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/flow-calculate" element={
-                    <ProtectedRoute allowedRoles={['admin']}>
-                      <FlowCalculate />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="/flow-search" element={
-                    <ProtectedRoute>
-                      <FlowSearch />
-                    </ProtectedRoute>
-                  } />
+                  <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/" />} />
+                  
+                  {/* Home Route */}
+                  <Route
+                    path="/"
+                    element={
+                      isAuthenticated ? (
+                        <Home />
+                      ) : (
+                        <Navigate to="/login" />
+                      )
+                    }
+                  />
+
+                  {/* Flow Search Route */}
+                  <Route
+                    path="/flow-search"
+                    element={
+                      isAuthenticated ? (
+                        <FlowSearch />
+                      ) : (
+                        <Navigate to="/login" />
+                      )
+                    }
+                  />
+
+                  {/* Flow Calculate Route - Only accessible by admin */}
+                  <Route
+                    path="/flow-calculate"
+                    element={
+                      isAuthenticated && userRole === 'admin' ? (
+                        <FlowCalculate />
+                      ) : (
+                        <Navigate to="/" />
+                      )
+                    }
+                  />
+
+                  {/* Control Route - Only accessible by admin */}
+                  <Route
+                    path="/control"
+                    element={
+                      isAuthenticated && userRole === 'admin' ? (
+                        <Control />
+                      ) : (
+                        <Navigate to="/" />
+                      )
+                    }
+                  />
+
+                  {/* Redirect any unknown routes to login */}
+                  <Route path="*" element={<Navigate to="/login" />} />
                 </Routes>
               </>
             )}
