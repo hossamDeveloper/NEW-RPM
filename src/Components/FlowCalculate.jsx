@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useDispatch, useSelector } from 'react-redux';
+import axios from 'axios';
 import {
   setAllRpmPoints,
   setCalculatedPoints,
@@ -8,6 +9,8 @@ import {
   setNextRpmPoints,
   setAllDataGenerated
 } from '../redux/flowSlice';
+
+const API_URL = 'https://notaty-6ryr.onrender.com/api/v1/model/';
 
 const FlowCalculate = () => {
   const dispatch = useDispatch();
@@ -18,6 +21,13 @@ const FlowCalculate = () => {
     nextRpmPoints,
     allDataGenerated
   } = useSelector((state) => state.flow);
+
+  const [fanType, setFanType] = useState('');
+  const [models, setModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState('');
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [modelError, setModelError] = useState('');
+  const [diameter, setDiameter] = useState(0.63); // Default value
 
   const initialPoint = {
     rpm: '',
@@ -50,8 +60,8 @@ const FlowCalculate = () => {
   const handleInputChange = (index, field, value) => {
     if (field === 'rpm') {
       const rpmValue = parseFloat(value);
-      if (!isNaN(rpmValue) && (rpmValue < 900 || rpmValue > 3000)) {
-        setError('RPM must be between 900 and 3000.');
+      if (!isNaN(rpmValue) && (rpmValue < 250 || rpmValue > 3750)) {
+        setError('RPM must be between 250 and 3750.');
         return;
       }
     }
@@ -120,16 +130,86 @@ const FlowCalculate = () => {
     return interpolatedValue.toFixed(4);
   };
 
-  // Function to load example data
-  const loadExampleData = () => {
-    const exampleData = [
-      { rpm: 900, flowRate: 1.575, totalPressure: 97.2, outletVelocity: 0.190774, brakePower: 0.190773692, efficiency: 65 },
-      { rpm: 900, flowRate: 1.9125, totalPressure: 	87.47, outletVelocity: 0.206144, brakePower: 0.206144277, efficiency: 70 },
-      { rpm: 900, flowRate: 2.16, totalPressure: 72.9, outletVelocity: 0.177147, brakePower: 0.177147, efficiency: 72 },
-      { rpm: 900, flowRate: 2.376, totalPressure: 55.065, outletVelocity: 0.155889, brakePower: 0.15588936, efficiency: 70 },
-      { rpm: 900, flowRate: 2.52, totalPressure: 40.5, outletVelocity: 0.13122, brakePower: 0.13122, efficiency: 63 }
-    ];
-    setDataPoints(exampleData);
+  useEffect(() => {
+    const fetchModels = async () => {
+      if (!fanType) return;
+      
+      setIsLoadingModels(true);
+      setModelError('');
+      try {
+        const token = localStorage.getItem('token');
+        console.log('Fetching models for type:', fanType);
+        const response = await axios.get(`${API_URL}?type=${fanType}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        console.log('Models API Response:', response.data);
+        
+        if (response.data && response.data.data && Array.isArray(response.data.data)) {
+          setModels(response.data.data);
+          setModelError('');
+        } else {
+          setModelError('No models found for this type');
+          setModels([]);
+        }
+      } catch (error) {
+        setModelError('Failed to fetch models. Please try again.');
+        console.error('Error fetching models:', error.response || error);
+        setModels([]);
+      } finally {
+        setIsLoadingModels(false);
+      }
+    };
+
+    fetchModels();
+  }, [fanType]);
+
+  // Function to load example data based on selected model
+  const loadExampleData = async () => {
+    if (!selectedModel) {
+      setError('Please select a model first');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      console.log('Fetching model data for ID:', selectedModel);
+      const response = await axios.get(`${API_URL}${selectedModel}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      console.log('API Response:', response.data);
+      
+      const modelData = response.data.data;
+      if (modelData && modelData.points && Array.isArray(modelData.points)) {
+        // Ensure we have at least 5 points
+        const points = modelData.points.slice(0, 5);
+        
+        // Format the points to match the expected structure
+        const formattedPoints = points.map(point => ({
+          rpm: point.rpm || 900,
+          flowRate: point.flowRate || 0,
+          totalPressure: point.totalPressure || 0,
+          outletVelocity: point.outletVelocity || 0,
+          brakePower: point.brakePower || 0,
+          efficiency: point.efficiency || 0
+        }));
+
+        console.log('Formatted points:', formattedPoints);
+        setDataPoints(formattedPoints);
+        setError('');
+      } else {
+        setError('Selected model does not have valid data points');
+        console.error('Invalid model data structure:', modelData);
+      }
+    } catch (error) {
+      setError('Failed to load model data. Please try again.');
+      console.error('Error loading model data:', error.response || error);
+    }
   };
 
   const calculateQuadraticCoefficients = (points) => {
@@ -173,6 +253,37 @@ const FlowCalculate = () => {
     return { a, b, c };
   };
 
+  // Function to calculate diameter from model name
+  const calculateDiameter = (modelName) => {
+    try {
+      // Extract numbers from model name
+      const numbers = modelName.match(/\d+/);
+      if (numbers) {
+        // Convert to number and divide by 1000
+        const diameterValue = parseInt(numbers[0]) / 1000;
+        setDiameter(diameterValue);
+        console.log('diameter', diameterValue)
+        return diameterValue;
+      }
+      return 0.63; // Default value if no numbers found
+    } catch (error) {
+      console.error('Error calculating diameter:', error);
+      return 0.63; // Default value if error occurs
+    }
+  };
+
+  // Update model selection handler
+  const handleModelChange = (e) => {
+    const modelId = e.target.value;
+    setSelectedModel(modelId);
+    
+    // Find the selected model from models array
+    const selectedModelData = models.find(model => model._id === modelId);
+    if (selectedModelData) {
+      calculateDiameter(selectedModelData.name);
+    }
+  };
+
   const generatePoints = (coeffs, basePoints) => {
     const validPoints = basePoints.filter(point => 
       point.flowRate !== '' && point.totalPressure !== '' && point.efficiency !== ''
@@ -192,8 +303,7 @@ const FlowCalculate = () => {
     const rpm = firstPoint.rpm || 900;
     
     const PI = Math.PI;
-    const DIAMETER = 0.63;
-    const DIAMETER_SQUARED = DIAMETER * DIAMETER;
+    const DIAMETER_SQUARED = diameter * diameter;
     const VELOCITY_CONSTANT = 4 / (PI * DIAMETER_SQUARED);
     
     const generatedPoints = [];
@@ -247,16 +357,10 @@ const FlowCalculate = () => {
       const totalPressureNum = Number(totalPressure);
       const efficiencyDecimal = Number(efficiency) / 100;
       
-      // Calculate base brake power with maximum precision
-      const basePower = (flowRateNum * totalPressureNum) / (efficiencyDecimal * 1000);
+      // Calculate brake power with maximum precision
+      const brakePower = (flowRateNum * totalPressureNum) / (efficiencyDecimal * 1000);
       
-      // Apply smooth curve interpolation
-      // Using a very small smoothing factor to maintain accuracy while reducing oscillations
-      const smoothingFactor = 0.0005; // Reduced from previous value
-      const smoothPower = basePower * (1 + Math.sin(flowRateNum * Math.PI * 0.5) * smoothingFactor);
-      
-      // Return with 6 decimal places precision
-      return Number(smoothPower.toFixed(6));
+      return Number(brakePower.toFixed(6));
     };
 
     // Verify point satisfies equation with high precision
@@ -403,8 +507,8 @@ const FlowCalculate = () => {
       return;
     }
 
-    if (targetRpm < 900 || targetRpm > 3000) {
-      setError('RPM must be between 900 and 3000.');
+    if (targetRpm < 250 || targetRpm > 3750) {
+      setError('RPM must be between 250 and 3750.');
       return;
     }
     
@@ -442,155 +546,128 @@ const FlowCalculate = () => {
           animate={{ opacity: 1, y: 0 }}
           className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 shadow-xl border border-white/20"
         >
-          <h1 className="text-3xl font-bold text-white mb-8 text-center">Selector</h1>
+          <h2 className="text-3xl font-bold text-white mb-8 text-center">Selector</h2>
           
-          {/* Input Form */}
-          <div className="space-y-4 mb-8">
+          {/* Fan Type and Model Selection */}
+          <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
-              {/* Headers - Hidden on mobile */}
-              <div className="hidden md:grid grid-cols-5 gap-4 text-white/80 font-medium mb-2">
-                <div>Point</div>
-                <div>RPM</div>
-                <div>Flow Rate</div>
-                <div>Total Pressure</div>
-                <div>Efficiency</div>
+              <label className="block text-lg font-semibold text-white mb-3">
+                Fan Type
+              </label>
+              <select
+                value={fanType}
+                onChange={(e) => {
+                  setFanType(e.target.value);
+                  setSelectedModel('');
+                  setModels([]);
+                }}
+                className="w-full px-4 py-3 bg-[#021F59] border border-blue-400/30 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+              >
+                <option value="" className="bg-[#021F59]">Select Fan Type</option>
+                <option value="axial" className="bg-[#021F59]">Axial</option>
+                <option value="centrifugal" className="bg-[#021F59]">Centrifugal</option>
+              </select>
+            </div>
+
+            <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
+              <label className="block text-lg font-semibold text-white mb-3">
+                Model
+              </label>
+              <select
+                value={selectedModel}
+                onChange={handleModelChange}
+                disabled={!fanType || isLoadingModels}
+                className="w-full px-4 py-3 bg-[#021F59] border border-blue-400/30 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent disabled:bg-[#021F59]/50 disabled:text-white/50"
+              >
+                <option value="" className="bg-[#021F59]">Select Model</option>
+                {models.map((model) => (
+                  <option key={model._id} value={model._id} className="bg-[#021F59]">
+                    {model.name}
+                  </option>
+                ))}
+              </select>
+              {isLoadingModels && (
+                <p className="mt-2 text-blue-300 text-sm">Loading models...</p>
+              )}
+              {modelError && (
+                <p className="mt-2 text-red-300 text-sm">{modelError}</p>
+              )}
+             
+            </div>
+          </div>
+
+          {/* Data Points Section */}
+          <div className="mb-8">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold text-white">Data Points</h3>
+              <button
+                onClick={loadExampleData}
+                disabled={!selectedModel}
+                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-semibold hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-[#021F59] disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                Load Model Data
+              </button>
+            </div>
+            
+            {error && (
+              <div className="mb-6 p-4 bg-red-500/20 border border-red-400/30 text-red-200 rounded-xl">
+                {error}
               </div>
+            )}
+
+            <div className="space-y-4">
               {dataPoints.map((point, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center py-4 border-b border-white/10 last:border-0"
-                >
-                  {/* Mobile View */}
-                  <div className="md:hidden grid grid-cols-2 gap-2 mb-2">
-                    <div className="font-medium text-white/80">Point:</div>
-                  <div className="font-medium text-white">Point {index + 1}</div>
-                  </div>
-                  
-                  {/* Desktop View */}
-                  <div className="hidden md:block font-medium text-white">Point {index + 1}</div>
-                  
-                  {/* Mobile View */}
-                  <div className="md:hidden grid grid-cols-2 gap-2">
-                    <div className="font-medium text-white/80">RPM:</div>
+                <div key={index} className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
+                      <label className="block text-sm font-medium text-white/80 mb-2">RPM</label>
                       <input
                         type="number"
                         value={point.rpm}
                         onChange={(e) => handleInputChange(index, 'rpm', e.target.value)}
-                        className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
-                        placeholder="RPM"
+                        className="w-full px-4 py-2 bg-[#021F59] border border-blue-400/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                       />
                     </div>
-                  </div>
-                  
-                  {/* Desktop View */}
-                  <div className="hidden md:block">
-                    <input
-                      type="number"
-                      value={point.rpm}
-                      onChange={(e) => handleInputChange(index, 'rpm', e.target.value)}
-                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
-                      placeholder="RPM"
-                    />
-                  </div>
-
-                  {/* Mobile View */}
-                  <div className="md:hidden grid grid-cols-2 gap-2">
-                    <div className="font-medium text-white/80">Flow Rate:</div>
                   <div>
+                      <label className="block text-sm font-medium text-white/80 mb-2">Flow Rate</label>
                       <input
                         type="number"
                         value={point.flowRate}
                         onChange={(e) => handleInputChange(index, 'flowRate', e.target.value)}
-                        className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
-                        placeholder="Flow Rate"
+                        className="w-full px-4 py-2 bg-[#021F59] border border-blue-400/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                       />
                     </div>
-                  </div>
-                  
-                  {/* Desktop View */}
-                  <div className="hidden md:block">
-                    <input
-                      type="number"
-                      value={point.flowRate}
-                      onChange={(e) => handleInputChange(index, 'flowRate', e.target.value)}
-                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
-                      placeholder="Flow Rate"
-                    />
-                  </div>
-
-                  {/* Mobile View */}
-                  <div className="md:hidden grid grid-cols-2 gap-2">
-                    <div className="font-medium text-white/80">Total Pressure:</div>
                   <div>
+                      <label className="block text-sm font-medium text-white/80 mb-2">Total Pressure</label>
                       <input
                         type="number"
                         value={point.totalPressure}
                         onChange={(e) => handleInputChange(index, 'totalPressure', e.target.value)}
-                        className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
-                        placeholder="Total Pressure"
+                        className="w-full px-4 py-2 bg-[#021F59] border border-blue-400/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                       />
                     </div>
-                  </div>
-                  
-                  {/* Desktop View */}
-                  <div className="hidden md:block">
-                    <input
-                      type="number"
-                      value={point.totalPressure}
-                      onChange={(e) => handleInputChange(index, 'totalPressure', e.target.value)}
-                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
-                      placeholder="Total Pressure"
-                    />
-                  </div>
-
-                  {/* Mobile View */}
-                  <div className="md:hidden grid grid-cols-2 gap-2">
-                    <div className="font-medium text-white/80">Efficiency:</div>
                   <div>
+                      <label className="block text-sm font-medium text-white/80 mb-2">Efficiency (%)</label>
                       <input
                         type="number"
                         value={point.efficiency}
                         onChange={(e) => handleInputChange(index, 'efficiency', e.target.value)}
-                        className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
-                        placeholder="Efficiency"
+                        className="w-full px-4 py-2 bg-[#021F59] border border-blue-400/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                       />
                     </div>
                   </div>
-                  
-                  {/* Desktop View */}
-                  <div className="hidden md:block">
-                    <input
-                      type="number"
-                      value={point.efficiency}
-                      onChange={(e) => handleInputChange(index, 'efficiency', e.target.value)}
-                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
-                      placeholder="Efficiency"
-                    />
                   </div>
-                </motion.div>
               ))}
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex flex-wrap gap-4 justify-center mb-8">
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={loadExampleData}
-              className="w-full py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#03178C] to-[#034AA6] hover:from-[#034AA6] hover:to-[#03178C] transition-all duration-200 shadow-lg"
-            >
-              Load All Example Data
-            </motion.button>
+          <div className="flex flex-wrap gap-4 justify-center">
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={handleSubmit}
-              className="w-full py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#03178C] to-[#034AA6] hover:from-[#034AA6] hover:to-[#03178C] transition-all duration-200 shadow-lg"
+              className="w-full py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-lg"
             >
               Calculate
             </motion.button>
@@ -601,97 +678,111 @@ const FlowCalculate = () => {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10"
+              className="mt-8 bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10"
             >
-              <h2 className="text-2xl font-bold text-white mb-6">Results</h2>
+              <h3 className="text-xl font-semibold text-white mb-4">Results</h3>
               
               {/* Next RPM Input */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-white/80 mb-2">Enter Next RPM</label>
-                <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex flex-wrap gap-4 items-end">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-white/80 mb-2">
+                      Next RPM
+                    </label>
                     <input
                       type="number"
                       value={nextRpm}
-                      onChange={(e) => {
-                        setNextRpm(e.target.value);
-                        setError('');
-                      }}
-                    className="w-full bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#034AA6] focus:border-transparent"
-                      placeholder="Enter RPM"
+                      onChange={(e) => setNextRpm(e.target.value)}
+                      className="w-full px-4 py-2 bg-[#021F59] border border-blue-400/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                      placeholder="Enter next RPM"
                     />
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={handleGenerateNextRpm}
-                    className="w-full sm:w-auto py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#03178C] to-[#034AA6] hover:from-[#034AA6] hover:to-[#03178C] transition-all duration-200 shadow-lg"
-                      >
-                      Generate
-                    </motion.button>
+                  </div>
+                  <button
+                    onClick={handleGenerateNextRpm}
+                    disabled={isLoading}
+                    className="px-6 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-semibold hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-[#021F59] disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed transition-all duration-200"
+                  >
+                    Generate Next RPM
+                  </button>
                   </div>
                   {error && (
-                    <motion.p
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="text-red-500 text-sm font-medium"
-                    >
-                      {error}
-                    </motion.p>
+                  <p className="mt-2 text-red-300 text-sm">{error}</p>
                   )}
               </div>
 
               {/* RPM Selection */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-white/80 mb-2">Select RPM</label>
-                <div className="overflow-x-auto">
-                  <div className="flex space-x-2 pb-2 min-w-min">
-                    {Object.keys(allRpmPoints).sort((a, b) => Number(a) - Number(b)).map((rpm) => (
-                      <motion.button
-                        key={rpm}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => handleRpmSelect({ target: { value: rpm } })}
-                        className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap ${
-                          selectedRpm === Number(rpm)
-                            ? 'bg-[#034AA6] text-white'
-                            : 'bg-white/10 text-white/80 hover:bg-white/20'
-                        }`}
-                      >
-                        {rpm} RPM
-                      </motion.button>
-                    ))}
+                <label className="block text-sm font-medium text-white/80 mb-2">
+                  Select RPM
+                </label>
+                <div className="relative">
+                  <div className="overflow-x-auto scrollbar-hide">
+                    <div className="flex space-x-2 pb-2 min-w-full">
+                      {Object.keys(allRpmPoints)
+                        .sort((a, b) => Number(a) - Number(b))
+                        .map((rpm) => (
+                          <button
+                            key={rpm}
+                            onClick={() => handleRpmSelect({ target: { value: rpm } })}
+                            className={`px-4 py-2 rounded-lg whitespace-nowrap transition-all duration-200 ${
+                              selectedRpm === Number(rpm)
+                                ? 'bg-blue-500 text-white shadow-lg'
+                                : 'bg-[#021F59] text-white/80 hover:bg-blue-500/50'
+                            }`}
+                          >
+                            {rpm} RPM
+                          </button>
+                        ))}
+                    </div>
                   </div>
+                  <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-[#021F59] to-transparent pointer-events-none"></div>
                 </div>
               </div>
 
-              {/* Results Table */}
-              {selectedRpm && allRpmPoints[selectedRpm] && (
+              {/* Generated Points Table */}
+              <div className="relative mb-6">
                 <div className="overflow-x-auto">
-                  <div className="max-h-[400px] overflow-y-auto">
-                    <table className="w-full text-white">
-                      <thead className="sticky top-0 bg-[#021F59]/80 backdrop-blur-sm">
-                        <tr className="border-b border-white/20">
-                          <th className="px-4 py-2 text-left">Flow Rate</th>
-                          <th className="px-4 py-2 text-left">Total Pressure</th>
-                          <th className="px-4 py-2 text-left">Velocity</th>
-                          <th className="px-4 py-2 text-left">Brake Power</th>
-                          <th className="px-4 py-2 text-left">Efficiency</th>
+                  <div className="max-h-[500px] overflow-y-auto rounded-lg border border-blue-400/30 bg-[#021F59]/50">
+                    <table className="w-full text-left">
+                      <thead className="sticky top-0 bg-[#021F59] z-10">
+                        <tr>
+                          <th className="px-4 py-3 text-white font-semibold">RPM</th>
+                          <th className="px-4 py-3 text-white font-semibold">Flow Rate</th>
+                          <th className="px-4 py-3 text-white font-semibold">Total Pressure</th>
+                          <th className="px-4 py-3 text-white font-semibold">Velocity</th>
+                          <th className="px-4 py-3 text-white font-semibold">Efficiency</th>
+                          <th className="px-4 py-3 text-white font-semibold">Brake Power</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {allRpmPoints[selectedRpm].map((point, index) => (
-                          <tr key={index} className="border-b border-white/10 hover:bg-white/5">
-                            <td className="px-4 py-2">{point.flowRate}</td>
-                            <td className="px-4 py-2">{point.totalPressure}</td>
-                            <td className="px-4 py-2">{point.velocity}</td>
-                            <td className="px-4 py-2">{point.brakePower}</td>
-                            <td className="px-4 py-2">{point.efficiency}</td>
+                        {nextRpmPoints.map((point, index) => (
+                          <tr key={index} className="border-b border-blue-400/10 hover:bg-white/5 transition-colors duration-150">
+                            <td className="px-4 py-3 text-white/80">{point.rpm}</td>
+                            <td className="px-4 py-3 text-white/80">{point.flowRate}</td>
+                            <td className="px-4 py-3 text-white/80">{point.totalPressure}</td>
+                            <td className="px-4 py-3 text-white/80">{point.velocity}</td>
+                            <td className="px-4 py-3 text-white/80">{point.efficiency}%</td>
+                            <td className="px-4 py-3 text-white/80">{point.brakePower}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 </div>
-              )}
+              </div>
+
+              {/* Quadratic Coefficients */}
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-[#021F59] rounded-lg p-4 border border-blue-400/30">
+                  <h4 className="text-lg font-medium text-white mb-2">Quadratic </h4>
+                  <div className="space-y-2">
+                    <p className="text-white/80">a: {quadraticCoefficients.a.toFixed(6)}</p>
+                    <p className="text-white/80">b: {quadraticCoefficients.b.toFixed(6)}</p>
+                    <p className="text-white/80">c: {quadraticCoefficients.c.toFixed(6)}</p>
+                  </div>
+                </div>
+               
+              </div>
             </motion.div>
           )}
         </motion.div>
