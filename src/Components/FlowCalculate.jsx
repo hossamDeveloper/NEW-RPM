@@ -308,7 +308,6 @@ const FlowCalculate = () => {
     
     const generatedPoints = [];
 
-    // Define the key points that must be included exactly
     const keyPoints = [
       { index: 0, flowRate: parseFloat(firstPoint.flowRate), totalPressure: parseFloat(firstPoint.totalPressure), efficiency: parseFloat(firstPoint.efficiency) },
       { index: 249, flowRate: parseFloat(sortedPoints[1].flowRate), totalPressure: parseFloat(sortedPoints[1].totalPressure), efficiency: parseFloat(sortedPoints[1].efficiency) },
@@ -317,7 +316,6 @@ const FlowCalculate = () => {
       { index: 999, flowRate: parseFloat(lastPoint.flowRate), totalPressure: parseFloat(lastPoint.totalPressure), efficiency: parseFloat(lastPoint.efficiency) }
     ];
 
-    // Calculate flow rate steps between key points with high precision
     const calculateFlowRate = (index) => {
       let segment = 0;
       for (let i = 1; i < keyPoints.length; i++) {
@@ -332,16 +330,14 @@ const FlowCalculate = () => {
       const segmentLength = endPoint.index - startPoint.index;
       const progress = (index - startPoint.index) / segmentLength;
 
-      // Use smooth interpolation for flow rate
       const t = (1 - Math.cos(progress * Math.PI)) / 2;
-      const smoothT = Math.pow(t, 1.1); // Add slight smoothing
+      const smoothT = Math.pow(t, 1.1);
       
       const flowRate = startPoint.flowRate + (endPoint.flowRate - startPoint.flowRate) * smoothT;
       
       return Number(flowRate.toFixed(6));
     };
 
-    // Calculate pressure using quadratic equation with high precision
     const calculatePressure = (flowRate) => {
       const totalPressure = (coeffs.a * flowRate * flowRate) + 
                           (coeffs.b * flowRate) + 
@@ -350,39 +346,33 @@ const FlowCalculate = () => {
       return Number(totalPressure.toFixed(6));
     };
 
-    // Calculate brake power with smooth curve interpolation
     const calculateBrakePower = (flowRate, totalPressure, efficiency) => {
-      // Convert all inputs to numbers with maximum precision
       const flowRateNum = Number(flowRate);
       const totalPressureNum = Number(totalPressure);
       const efficiencyDecimal = Number(efficiency) / 100;
       
-      // Calculate brake power with maximum precision
       const brakePower = (flowRateNum * totalPressureNum) / (efficiencyDecimal * 1000);
       
       return Number(brakePower.toFixed(6));
     };
 
-    // Verify point satisfies equation with high precision
     const verifyPoint = (flowRate, totalPressure) => {
       const calculatedPressure = calculatePressure(flowRate);
       const error = Math.abs(calculatedPressure - totalPressure);
       const errorPercentage = (error / totalPressure) * 100;
       
-      return errorPercentage <= 0.0001; // Accept only if error is less than 0.0001%
+      return errorPercentage <= 0.0001;
     };
 
     for (let i = 0; i < 1000; i++) {
       let flowRate, totalPressure, efficiency;
 
-      // Check if this is a key point
       const keyPoint = keyPoints.find(kp => kp.index === i);
       if (keyPoint) {
         flowRate = keyPoint.flowRate;
         totalPressure = keyPoint.totalPressure;
         efficiency = keyPoint.efficiency;
       } else {
-        // Calculate values with enhanced smoothing
         flowRate = calculateFlowRate(i);
         totalPressure = calculatePressure(flowRate);
         efficiency = generateInterpolatedEfficiency(i, sortedPoints);
@@ -410,8 +400,8 @@ const FlowCalculate = () => {
     
     const newPoints = [];
     // Correct velocity constant calculation
-    const DIAMETER = 0.63; // diameter in meters
-    const velocityConstant = 4 / (Math.PI * Math.pow(DIAMETER, 2));
+    // const DIAMETER = 0.63; // diameter in meters
+    const velocityConstant = 4 / (Math.PI * Math.pow(diameter, 2));
     
     // Apply scaling laws to each of the 1000 base points
     for (let i = 0; i < 1000; i++) {
