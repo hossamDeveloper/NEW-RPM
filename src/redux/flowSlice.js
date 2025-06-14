@@ -5,7 +5,8 @@ const initialState = {
   calculatedPoints: [],
   selectedRpm: null,
   nextRpmPoints: [],
-  allDataGenerated: []
+  allDataGenerated: [],
+  diameter: 0.63 // Default diameter value
 };
 
 const flowSlice = createSlice({
@@ -27,12 +28,16 @@ const flowSlice = createSlice({
     setAllDataGenerated: (state, action) => {
       state.allDataGenerated = action.payload;
     },
+    setDiameter: (state, action) => {
+      state.diameter = action.payload;
+    },
     clearFlowData: (state) => {
       state.allRpmPoints = {};
       state.calculatedPoints = [];
       state.selectedRpm = null;
       state.nextRpmPoints = [];
       state.allDataGenerated = [];
+      state.diameter = 0.63;
     }
   }
 });
@@ -43,6 +48,7 @@ export const {
   setSelectedRpm,
   setNextRpmPoints,
   setAllDataGenerated,
+  setDiameter,
   clearFlowData
 } = flowSlice.actions;
 

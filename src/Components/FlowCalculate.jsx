@@ -7,7 +7,8 @@ import {
   setCalculatedPoints,
   setSelectedRpm,
   setNextRpmPoints,
-  setAllDataGenerated
+  setAllDataGenerated,
+  setDiameter
 } from '../redux/flowSlice';
 
 const API_URL = 'https://notaty-6ryr.onrender.com/api/v1/model/';
@@ -19,7 +20,8 @@ const FlowCalculate = () => {
     calculatedPoints,
     selectedRpm,
     nextRpmPoints,
-    allDataGenerated
+    allDataGenerated,
+    diameter
   } = useSelector((state) => state.flow);
 
   const [fanType, setFanType] = useState('');
@@ -27,7 +29,8 @@ const FlowCalculate = () => {
   const [selectedModel, setSelectedModel] = useState('');
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [modelError, setModelError] = useState('');
-  const [diameter, setDiameter] = useState(0.63); // Default value
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const initialPoint = {
     rpm: '',
@@ -54,8 +57,6 @@ const FlowCalculate = () => {
 
   const [showResults, setShowResults] = useState(false);
   const [nextRpm, setNextRpm] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
 
   const handleInputChange = (index, field, value) => {
     if (field === 'rpm') {
@@ -166,7 +167,6 @@ const FlowCalculate = () => {
     fetchModels();
   }, [fanType]);
 
-  // Function to load example data based on selected model
   const loadExampleData = async () => {
     if (!selectedModel) {
       setError('Please select a model first');
@@ -201,6 +201,12 @@ const FlowCalculate = () => {
 
         console.log('Formatted points:', formattedPoints);
         setDataPoints(formattedPoints);
+        
+        // Update diameter in Redux if it exists in modelData
+        if (modelData.diameter) {
+          dispatch(setDiameter(modelData.diameter));
+        }
+        
         setError('');
       } else {
         setError('Selected model does not have valid data points');
@@ -261,13 +267,18 @@ const FlowCalculate = () => {
       if (numbers) {
         // Convert to number and divide by 1000
         const diameterValue = parseInt(numbers[0]) / 1000;
-        setDiameter(diameterValue);
-        console.log('diameter', diameterValue)
+        // Dispatch to Redux
+        dispatch(setDiameter(diameterValue));
+        console.log('diameter', diameterValue);
         return diameterValue;
       }
+      // Dispatch default value to Redux
+      dispatch(setDiameter(0.63));
       return 0.63; // Default value if no numbers found
     } catch (error) {
       console.error('Error calculating diameter:', error);
+      // Dispatch default value to Redux
+      dispatch(setDiameter(0.63));
       return 0.63; // Default value if error occurs
     }
   };

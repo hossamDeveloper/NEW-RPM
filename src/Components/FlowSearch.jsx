@@ -34,7 +34,10 @@ const FlowSearch = () => {
   const [chartData, setChartData] = useState(null);
 
   // Get data from Redux store
-  const allDataGenerated = useSelector((state) => state.flow.allDataGenerated);
+  const { allDataGenerated, diameter } = useSelector((state) => state.flow);
+
+  console.log(allDataGenerated);
+  console.log(diameter);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -46,8 +49,7 @@ const FlowSearch = () => {
 
   const calculateDynamicPressure = (flowRate) => {
     const q = parseFloat(flowRate);
-    const DIAMETER = 0.63;
-    const velocity = (4 * q) / (Math.PI * Math.pow(DIAMETER, 2));
+    const velocity = (4 * q) / (Math.PI * Math.pow(diameter, 2));
     return 0.5 * 1.2 * Math.pow(velocity, 2);
   };
 
