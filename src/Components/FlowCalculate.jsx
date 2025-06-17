@@ -122,11 +122,11 @@ const FlowCalculate = () => {
     const progress = (displayIndex - startIndex) / (endIndex - startIndex);
     
     // Use enhanced smooth interpolation for efficiency
-    const t = (1 - Math.cos(progress * Math.PI)) / 2;
-    const smoothT = Math.pow(t, 1.2); // Add extra smoothing
+    // const t = (1 - Math.cos(progress * Math.PI)) / 2;
+    // const smoothT = Math.pow(t, 1.1); // Add extra smoothing
     
     // Calculate interpolated efficiency with additional smoothing
-    const interpolatedValue = startValue + (endValue - startValue) * smoothT;
+    const interpolatedValue = startValue + (endValue - startValue) * progress;
     
     return interpolatedValue.toFixed(4);
   };
@@ -341,10 +341,10 @@ const FlowCalculate = () => {
       const segmentLength = endPoint.index - startPoint.index;
       const progress = (index - startPoint.index) / segmentLength;
 
-      const t = (1 - Math.cos(progress * Math.PI)) / 2;
-      const smoothT = Math.pow(t, 1.1);
+      // const t = (1 - Math.cos(progress * Math.PI)) / 2;
+      // const smoothT = Math.pow(t, 1.1);
       
-      const flowRate = startPoint.flowRate + (endPoint.flowRate - startPoint.flowRate) * smoothT;
+      const flowRate = startPoint.flowRate + (endPoint.flowRate - startPoint.flowRate) * progress;
       
       return Number(flowRate.toFixed(6));
     };
