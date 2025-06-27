@@ -209,50 +209,19 @@ const FlowSearch = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setSearchResults([]);
     setChartData(null);
 
     const { flowRate, staticPressure } = searchData;
-    
-    if (!flowRate || !staticPressure) {
-      setError('Please enter both Flow Rate and Static Pressure');
-      return;
-    }
-
     const flowRateNum = parseFloat(flowRate);
     const staticPressureNum = parseFloat(staticPressure);
 
-    if (isNaN(flowRateNum) || isNaN(staticPressureNum)) {
-      setError('Please enter valid numbers');
-      return;
-    }
-
-    // Calculate total pressure (T) using the given equation
-    const T = 34.737 * Math.pow(flowRateNum, 2) + 24.728 * flowRateNum - 32.024;
-    
-    // Calculate dynamic pressure
-    const dynamicPressure = calculateDynamicPressure(flowRateNum);
-    
-    // Calculate maximum allowed static pressure
-    const maxStaticPressure = T - dynamicPressure;
-
-    // Validate static pressure
-    if (staticPressureNum > maxStaticPressure) {
-      setError(`Static Pressure cannot exceed ${maxStaticPressure.toFixed(4)}. The maximum allowed value is based on the flow rate equation.`);
-      return;
-    }
-
-    if (allDataGenerated.length === 0) {
-      setError('No data available. Please generate data in Flow Calculate first.');
-      return;
-    }
-
-    // Find the closest point
+    // Find the closest point (even if input is invalid, let the logic handle it)
     const closestPoint = findClosestPoint(flowRateNum, staticPressureNum, allDataGenerated);
 
     if (!closestPoint) {
-      setError('No matching points found');
+      setError("No matching points found");
     } else {
       // Add calculated values to the result
       const result = {
@@ -265,7 +234,6 @@ const FlowSearch = () => {
         totalPressureError: closestPoint.totalPressureError,
         averageError: closestPoint.averageError
       };
-      
       setSearchResults([result]);
       setChartData(prepareChartData(closestPoint));
     }
@@ -532,21 +500,6 @@ const FlowSearch = () => {
                 />
               </div>
             </div>
-
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-red-500/20 backdrop-blur-md border border-red-500/30 rounded-xl p-3"
-              >
-                <div className="flex items-center space-x-2">
-                  <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-red-400 text-sm font-medium">{error}</p>
-                </div>
-              </motion.div>
-            )}
 
             <motion.button
               whileHover={{ scale: 1.02 }}
