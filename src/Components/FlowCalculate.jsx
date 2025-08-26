@@ -469,7 +469,7 @@ const FlowCalculate = () => {
     
     const newPoints = [];
     const velocityConstant = 4 / (Math.PI * Math.pow(diameter, 2));
-    const lpaDelta = 50 * Math.log(rpmRatio);
+    const lpaDelta = 50 * Math.log10(rpmRatio);
     
     // Apply scaling laws to each of the 1000 base points
     for (let i = 0; i < 1000; i++) {
