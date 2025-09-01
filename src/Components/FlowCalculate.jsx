@@ -336,6 +336,100 @@ const FlowCalculate = () => {
     return (a * x * x * x) + (b * x * x) + (c * x) + d;
   };
 
+  // Solve a generic n x n linear system A*x = b using Gaussian elimination with partial pivoting
+  const solveLinearSystem = (A, b) => {
+    try {
+      const n = A.length;
+      const M = A.map((row, i) => [...row, b[i]]);
+
+      for (let col = 0; col < n; col++) {
+        let pivotRow = col;
+        for (let r = col + 1; r < n; r++) {
+          if (Math.abs(M[r][col]) > Math.abs(M[pivotRow][col])) pivotRow = r;
+        }
+        if (Math.abs(M[pivotRow][col]) < 1e-12) return null;
+        if (pivotRow !== col) {
+          const tmp = M[col];
+          M[col] = M[pivotRow];
+          M[pivotRow] = tmp;
+        }
+        const pivot = M[col][col];
+        for (let c = col; c <= n; c++) M[col][c] /= pivot;
+        for (let r = 0; r < n; r++) {
+          if (r === col) continue;
+          const factor = M[r][col];
+          for (let c = col; c <= n; c++) {
+            M[r][c] -= factor * M[col][c];
+          }
+        }
+      }
+      return M.map(row => row[n]);
+    } catch (err) {
+      console.error('Error solving linear system:', err);
+      return null;
+    }
+  };
+
+  // Calculate polynomial coefficients (degree 5) for efficiency vs flowRate using ridge regularization
+  const calculatePolynomialCoefficientsForEfficiency = (points, degree = 5, ridgeLambda = 1e-6) => {
+    try {
+      const valid = points
+        .filter(p => p && p.flowRate !== '' && p.efficiency !== '')
+        .map(p => ({ x: parseFloat(p.flowRate), y: parseFloat(p.efficiency) }))
+        .filter(p => !isNaN(p.x) && !isNaN(p.y));
+
+      if (valid.length < 3) return null;
+
+      const m = valid.length;
+      const n = degree + 1; // number of coefficients
+
+      // Build design matrix X (rows: m, cols: n) with powers from degree -> 0
+      const X = valid.map(({ x }) => {
+        const row = [];
+        for (let d = degree; d >= 0; d--) {
+          row.push(Math.pow(x, d));
+        }
+        return row;
+      });
+      const Y = valid.map(({ y }) => y);
+
+      // Compute XtX and XtY
+      const XtX = Array.from({ length: n }, () => Array(n).fill(0));
+      const XtY = Array(n).fill(0);
+      for (let i = 0; i < m; i++) {
+        for (let r = 0; r < n; r++) {
+          XtY[r] += X[i][r] * Y[i];
+          for (let c = 0; c < n; c++) {
+            XtX[r][c] += X[i][r] * X[i][c];
+          }
+        }
+      }
+
+      // Ridge regularization to ensure invertibility when m < n
+      for (let d = 0; d < n; d++) {
+        XtX[d][d] += ridgeLambda;
+      }
+
+      const coeffs = solveLinearSystem(XtX, XtY);
+      if (!coeffs) return null;
+      return coeffs; // ordered as [x^degree, ..., 1]
+    } catch (err) {
+      console.error('Error calculating polynomial coefficients for efficiency:', err);
+      return null;
+    }
+  };
+
+  const evaluatePolynomial = (coeffs, x) => {
+    if (!coeffs) return 0;
+    let y = 0;
+    const n = coeffs.length;
+    for (let i = 0; i < n; i++) {
+      const power = n - 1 - i;
+      y += coeffs[i] * Math.pow(x, power);
+    }
+    return y;
+  };
+
   const calculateDiameter = (modelName) => {
     try {
       // Extract numbers from model name
@@ -431,6 +525,9 @@ const FlowCalculate = () => {
     // Prepare cubic coefficients for LPA using points 1,2,4,5
     const cubicCoeffsLpa = calculateCubicCoefficientsForLpa(basePoints);
 
+    // Prepare quintic polynomial for efficiency vs flowRate
+    const quinticEffCoeffs = calculatePolynomialCoefficientsForEfficiency(basePoints, 5, 1e-6);
+
     for (let i = 0; i < 1000; i++) {
       let flowRate, totalPressure, efficiency;
 
@@ -438,12 +535,25 @@ const FlowCalculate = () => {
       if (keyPoint) {
         flowRate = keyPoint.flowRate;
         totalPressure = keyPoint.totalPressure;
-        efficiency = keyPoint.efficiency;
+        // Even at key points, evaluate via quintic to ensure smooth curve; fallback to entered value if unavailable
+        if (quinticEffCoeffs) {
+          efficiency = evaluatePolynomial(quinticEffCoeffs, flowRate);
+        } else {
+          efficiency = keyPoint.efficiency;
+        }
       } else {
         flowRate = calculateFlowRate(i);
         totalPressure = calculatePressure(flowRate);
-        efficiency = generateInterpolatedEfficiency(i, sortedPoints);
+        if (quinticEffCoeffs) {
+          efficiency = evaluatePolynomial(quinticEffCoeffs, flowRate);
+        } else {
+          efficiency = generateInterpolatedEfficiency(i, sortedPoints);
+        }
       }
+      
+      // Clamp and format efficiency
+      if (!isFinite(efficiency)) efficiency = 0;
+      efficiency = Math.max(0, Math.min(100, Number(efficiency)));
       
       const velocity = VELOCITY_CONSTANT * flowRate;
       const brakePower = calculateBrakePower(flowRate, totalPressure, efficiency);
@@ -454,7 +564,7 @@ const FlowCalculate = () => {
         flowRate: flowRate.toFixed(6),
         totalPressure: totalPressure.toFixed(6),
         velocity: velocity.toFixed(6),
-        efficiency: efficiency,
+        efficiency: Number(efficiency).toFixed(4),
         brakePower: brakePower.toFixed(6),
         lpa: Number(lpaValue ?? 0).toFixed(6)
       });

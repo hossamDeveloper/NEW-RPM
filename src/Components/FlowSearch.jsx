@@ -37,7 +37,7 @@ const FlowSearch = () => {
   const { allDataGenerated, diameter } = useSelector((state) => state.flow);
 
   console.log(allDataGenerated);
-  console.log(diameter);
+  console.log('diameter=',diameter);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -587,7 +587,7 @@ const FlowSearch = () => {
                           <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.velocity}</td>
                           <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.brakePower}</td>
                           <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.efficiency}</td>
-                          <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{lpa.toFixed(2)}</td>
+                          <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.lpa}</td>
                         </tr>
                       );
                     })}
