@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import axios from "axios";
+import api from "../../redux/api";
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 const AddModel = () => {
   const [formData, setFormData] = useState({
@@ -16,17 +17,29 @@ const AddModel = () => {
     ],
   });
 
+  const queryClient = useQueryClient();
+
+  const addModelMutation = useMutation({
+    mutationFn: (payload) => api.post('/model', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['models'] });
+      setFormData({
+        type: "",
+        name: "",
+        points: [
+          { rpm: 0, flowRate: 0, totalPressure: 0, efficiency: 0, lpa: 0 },
+        ],
+      });
+    }
+  });
+
   const handleChange = (e, index) => {
     const { name, value } = e.target;
     if (name.includes("points")) {
       const pointField = name.split(".")[1];
       const newPoints = [...formData.points];
-      // Convert value to number and handle empty string case
       const numericValue = value === "" ? 0 : parseFloat(value);
-      newPoints[index] = {
-        ...newPoints[index],
-        [pointField]: numericValue,
-      };
+      newPoints[index] = { ...newPoints[index], [pointField]: numericValue };
       setFormData({ ...formData, points: newPoints });
     } else {
       setFormData({ ...formData, [name]: value });
@@ -38,13 +51,7 @@ const AddModel = () => {
       ...formData,
       points: [
         ...formData.points,
-        {
-          rpm: 0,
-          flowRate: 0,
-          totalPressure: 0,
-          efficiency: 0,
-          lpa: 0,
-        },
+        { rpm: 0, flowRate: 0, totalPressure: 0, efficiency: 0, lpa: 0 },
       ],
     });
   };
@@ -56,48 +63,17 @@ const AddModel = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    try {
-      const token = localStorage.getItem("token");
-      // Ensure all point values are numbers before sending
-      const dataToSend = {
-        ...formData,
-        points: formData.points.map(point => ({
-          rpm: Number(point.rpm),
-          flowRate: Number(point.flowRate),
-          totalPressure: Number(point.totalPressure),
-          efficiency: Number(point.efficiency),
-          lpa: Number(point.lpa)
-        }))
-      };
-      console.log("Sending data:", dataToSend);
-      const response = await axios.post(
-        "https://notaty-6ryr.onrender.com/api/v1/model",
-        dataToSend,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': "application/json",
-          },
-        }
-      );
-      console.log("Model added successfully:", response.data);
-    
-      setFormData({
-        type: "",
-        name: "",
-        points: [
-          {
-            rpm: 0,
-            flowRate: 0,
-            totalPressure: 0,
-            efficiency: 0,
-            lpa: 0,
-          },
-        ],
-      });
-    } catch (error) {
-      console.error("Error adding model:", error);
-    }
+    const dataToSend = {
+      ...formData,
+      points: formData.points.map(point => ({
+        rpm: Number(point.rpm),
+        flowRate: Number(point.flowRate),
+        totalPressure: Number(point.totalPressure),
+        efficiency: Number(point.efficiency),
+        lpa: Number(point.lpa)
+      }))
+    };
+    addModelMutation.mutate(dataToSend);
   };
 
   return (

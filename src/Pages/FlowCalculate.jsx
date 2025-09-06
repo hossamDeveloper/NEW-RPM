@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useDispatch, useSelector } from 'react-redux';
-import axios from 'axios';
+import api from '../redux/api';
+import { useQuery } from '@tanstack/react-query';
 import {
   setAllRpmPoints,
   setCalculatedPoints,
@@ -11,10 +12,7 @@ import {
   setDiameter
 } from '../redux/flowSlice';
 
-const API_URL = 'https://notaty-6ryr.onrender.com/api/v1/model/';
-
 const FlowCalculate = () => {
-  // ===== REDUX HOOKS =====
   const dispatch = useDispatch();
   const {
     allRpmPoints,
@@ -24,18 +22,17 @@ const FlowCalculate = () => {
     diameter
   } = useSelector((state) => state.flow);
 
-  // ===== LOCAL STATE =====
   const [fanType, setFanType] = useState('');
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState('');
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [modelError, setModelError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
   const [showResults, setShowResults] = useState(false);
   const [nextRpm, setNextRpm] = useState('');
 
-  // ===== INITIAL DATA STRUCTURES =====
   const initialPoint = {
     rpm: '',
     flowRate: '',
@@ -60,7 +57,33 @@ const FlowCalculate = () => {
     c: 0
   });
 
-  // ===== INPUT HANDLERS =====
+  const { data: modelsData, isLoading: qLoadingModels, error: qModelsError } = useQuery({
+    queryKey: ['models', fanType],
+    queryFn: async () => {
+      const res = await api.get(`/model/`, { params: fanType ? { type: fanType } : {} });
+      return Array.isArray(res.data) ? res.data : res.data.data || [];
+    },
+    enabled: !!fanType,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    setIsLoadingModels(qLoadingModels);
+    if (qModelsError) setModelError('Failed to fetch models. Please try again.');
+    else setModelError('');
+    setModels(modelsData || []);
+  }, [qLoadingModels, qModelsError, modelsData]);
+
+  const { data: selectedModelData } = useQuery({
+    queryKey: ['model', selectedModel],
+    queryFn: async () => {
+      const res = await api.get(`/model/${selectedModel}`);
+      return res.data?.data;
+    },
+    enabled: !!selectedModel,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const handleInputChange = (index, field, value) => {
     if (field === 'rpm') {
       const rpmValue = parseFloat(value);
@@ -70,53 +93,36 @@ const FlowCalculate = () => {
       }
     }
     setError('');
-    
     const newDataPoints = [...dataPoints];
-    newDataPoints[index] = {
-      ...newDataPoints[index],
-      [field]: value
-    };
+    newDataPoints[index] = { ...newDataPoints[index], [field]: value };
     setDataPoints(newDataPoints);
   };
 
   const handleModelChange = (e) => {
     const modelId = e.target.value;
     setSelectedModel(modelId);
-    
-    // Find the selected model from models array
-    const selectedModelData = models.find(model => model._id === modelId);
-    if (selectedModelData) {
-      calculateDiameter(selectedModelData.name);
+    const selectedModelObj = models.find(model => model._id === modelId);
+    if (selectedModelObj) {
+      calculateDiameter(selectedModelObj.name);
     }
   };
 
-  // ===== EFFICIENCY CALCULATION FUNCTIONS =====
   const generateInterpolatedEfficiency = (index, validPoints) => {
-    // Default efficiency values in case we don't have enough input data
     const defaultEfficiencies = [65, 70, 72, 70, 63];
-    
     let efficiencies = [];
-    
-    // If we have valid points with efficiency values, use those
     if (validPoints && validPoints.length >= 2) {
       efficiencies = validPoints.map(point => 
         parseFloat(point.efficiency || '65')
       );
     } else {
-      // Otherwise use the default values
       efficiencies = defaultEfficiencies;
     }
-    
     const displayIndex = index + 1;
     const keyPoints = [1, 250, 500, 750, 1000];
-    
-    // Check if this display index is a key point
     const keyPointIndex = keyPoints.indexOf(displayIndex);
     if (keyPointIndex !== -1 && keyPointIndex < efficiencies.length) {
       return efficiencies[keyPointIndex].toFixed(4);
     }
-    
-    // Find which segment this index belongs to
     let segment = 0;
     for (let i = 1; i < keyPoints.length; i++) {
       if (displayIndex < keyPoints[i]) {
@@ -124,82 +130,24 @@ const FlowCalculate = () => {
         break;
       }
     }
-    
-    // Get the start and end points for this segment
     const startIndex = keyPoints[segment];
     const endIndex = keyPoints[segment + 1];
     const startValue = efficiencies[segment];
     const endValue = efficiencies[segment + 1];
-    
-    // Calculate progress through the segment with enhanced smoothing
     const progress = (displayIndex - startIndex) / (endIndex - startIndex);
-    
-    // Calculate interpolated efficiency with additional smoothing
     const interpolatedValue = startValue + (endValue - startValue) * progress;
-    
     return interpolatedValue.toFixed(4);
   };
-
-  // ===== API FUNCTIONS =====
-  useEffect(() => {
-    const fetchModels = async () => {
-      if (!fanType) return;
-      
-      setIsLoadingModels(true);
-      setModelError('');
-      try {
-        const token = localStorage.getItem('token');
-        console.log('Fetching models for type:', fanType);
-        const response = await axios.get(`${API_URL}?type=${fanType}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        console.log('Models API Response:', response.data);
-        
-        if (response.data && response.data.data && Array.isArray(response.data.data)) {
-          setModels(response.data.data);
-          setModelError('');
-        } else {
-          setModelError('No models found for this type');
-          setModels([]);
-        }
-      } catch (error) {
-        setModelError('Failed to fetch models. Please try again.');
-        console.error('Error fetching models:', error.response || error);
-        setModels([]);
-      } finally {
-        setIsLoadingModels(false);
-      }
-    };
-
-    fetchModels();
-  }, [fanType]);
 
   const loadExampleData = async () => {
     if (!selectedModel) {
       setError('Please select a model first');
       return;
     }
-
     try {
-      const token = localStorage.getItem('token');
-      console.log('Fetching model data for ID:', selectedModel);
-      const response = await axios.get(`${API_URL}${selectedModel}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      console.log('API Response:', response.data);
-      
-      const modelData = response.data.data;
+      const modelData = selectedModelData;
       if (modelData && modelData.points && Array.isArray(modelData.points)) {
-        // Ensure we have at least 5 points
         const points = modelData.points.slice(0, 5);
-        
-        // Format the points to match the expected structure
         const formattedPoints = points.map(point => ({
           rpm: point.rpm || 900,
           flowRate: point.flowRate || 0,
@@ -209,92 +157,61 @@ const FlowCalculate = () => {
           efficiency: point.efficiency || 0,
           lpa: point.lpa || 0
         }));
-
-        console.log('Formatted points:', formattedPoints);
         setDataPoints(formattedPoints);
-        
-        // Update diameter in Redux if it exists in modelData
         if (modelData.diameter) {
           dispatch(setDiameter(modelData.diameter));
         }
-        
         setError('');
       } else {
         setError('Selected model does not have valid data points');
-        console.error('Invalid model data structure:', modelData);
       }
-    } catch (error) {
+    } catch (err) {
       setError('Failed to load model data. Please try again.');
-      console.error('Error loading model data:', error.response || error);
     }
   };
 
-  // ===== MATHEMATICAL CALCULATIONS =====
   const calculateQuadraticCoefficients = (points) => {
-    // Get points 1, 3, and 5 (0-based index: 0, 2, 4)
     const point1 = points[0];
     const point3 = points[2];
     const point5 = points[4];
-
-    // Extract x (flowRate) and y (totalPressure) values
     const x1 = parseFloat(point1.flowRate);
     const y1 = parseFloat(point1.totalPressure);
     const x3 = parseFloat(point3.flowRate);
     const y3 = parseFloat(point3.totalPressure);
     const x5 = parseFloat(point5.flowRate);
     const y5 = parseFloat(point5.totalPressure);
-
-    // Calculate coefficients using the three points
-    // Using the system of equations:
-    // y1 = ax1² + bx1 + c
-    // y3 = ax3² + bx3 + c
-    // y5 = ax5² + bx5 + c
-
-    // Calculate determinants
     const det = (x1 * x1 * x3) + (x3 * x3 * x5) + (x5 * x5 * x1) - 
                 (x1 * x3 * x3) - (x3 * x5 * x5) - (x5 * x1 * x1);
-
     const detA = (y1 * x3) + (y3 * x5) + (y5 * x1) - 
                  (x1 * y3) - (x3 * y5) - (x5 * y1);
-
     const detB = (x1 * x1 * y3) + (x3 * x3 * y5) + (x5 * x5 * y1) - 
                  (y1 * x3 * x3) - (y3 * x5 * x5) - (y5 * x1 * x1);
-
     const detC = (x1 * x1 * x3 * y5) + (x3 * x3 * x5 * y1) + (x5 * x5 * x1 * y3) - 
                  (y1 * x3 * x5 * x5) - (y3 * x5 * x1 * x1) - (y5 * x1 * x3 * x3);
-
-    // Calculate coefficients
     const a = detA / det;
     const b = detB / det;
     const c = detC / det;
-
     return { a, b, c };
   };
 
-  // Solve a 4x4 linear system A*x = b using Gaussian elimination with partial pivoting
   const solveLinearSystem4x4 = (A, b) => {
     const n = 4;
-    // Create augmented matrix
     const M = A.map((row, i) => [...row, b[i]]);
-
     for (let col = 0; col < n; col++) {
-      // Pivot
       let pivotRow = col;
       for (let r = col + 1; r < n; r++) {
         if (Math.abs(M[r][col]) > Math.abs(M[pivotRow][col])) pivotRow = r;
       }
       if (Math.abs(M[pivotRow][col]) < 1e-12) {
-        return null; // Singular
+        return null;
       }
       if (pivotRow !== col) {
         const tmp = M[col];
         M[col] = M[pivotRow];
         M[pivotRow] = tmp;
       }
-      // Normalize pivot row
       const pivot = M[col][col];
       for (let c = col; c <= n; c++) M[col][c] /= pivot;
-      // Eliminate others
       for (let r = 0; r < n; r++) {
         if (r === col) continue;
         const factor = M[r][col];
@@ -303,22 +220,17 @@ const FlowCalculate = () => {
         }
       }
     }
-
-    // Extract solution
     return [M[0][n], M[1][n], M[2][n], M[3][n]];
   };
 
-  // Calculate cubic coefficients for LPA using points 1,2,4,5 (indices 0,1,3,4)
   const calculateCubicCoefficientsForLpa = (points) => {
     try {
       const indices = [0, 1, 3, 4];
       const selected = indices.map(i => points[i]);
       if (selected.some(p => !p)) return null;
-
       const xs = selected.map(p => parseFloat(p.flowRate));
       const ys = selected.map(p => parseFloat(p.lpa));
       if (xs.some(x => isNaN(x)) || ys.some(y => isNaN(y))) return null;
-
       const A = xs.map(x => [Math.pow(x, 3), Math.pow(x, 2), x, 1]);
       const solution = solveLinearSystem4x4(A, ys);
       if (!solution) return null;
@@ -336,12 +248,10 @@ const FlowCalculate = () => {
     return (a * x * x * x) + (b * x * x) + (c * x) + d;
   };
 
-  // Solve a generic n x n linear system A*x = b using Gaussian elimination with partial pivoting
   const solveLinearSystem = (A, b) => {
     try {
       const n = A.length;
       const M = A.map((row, i) => [...row, b[i]]);
-
       for (let col = 0; col < n; col++) {
         let pivotRow = col;
         for (let r = col + 1; r < n; r++) {
@@ -370,20 +280,15 @@ const FlowCalculate = () => {
     }
   };
 
-  // Calculate polynomial coefficients (degree 5) for efficiency vs flowRate using ridge regularization
   const calculatePolynomialCoefficientsForEfficiency = (points, degree = 5, ridgeLambda = 1e-6) => {
     try {
       const valid = points
         .filter(p => p && p.flowRate !== '' && p.efficiency !== '')
         .map(p => ({ x: parseFloat(p.flowRate), y: parseFloat(p.efficiency) }))
         .filter(p => !isNaN(p.x) && !isNaN(p.y));
-
       if (valid.length < 3) return null;
-
       const m = valid.length;
-      const n = degree + 1; // number of coefficients
-
-      // Build design matrix X (rows: m, cols: n) with powers from degree -> 0
+      const n = degree + 1;
       const X = valid.map(({ x }) => {
         const row = [];
         for (let d = degree; d >= 0; d--) {
@@ -392,8 +297,6 @@ const FlowCalculate = () => {
         return row;
       });
       const Y = valid.map(({ y }) => y);
-
-      // Compute XtX and XtY
       const XtX = Array.from({ length: n }, () => Array(n).fill(0));
       const XtY = Array(n).fill(0);
       for (let i = 0; i < m; i++) {
@@ -404,15 +307,12 @@ const FlowCalculate = () => {
           }
         }
       }
-
-      // Ridge regularization to ensure invertibility when m < n
       for (let d = 0; d < n; d++) {
         XtX[d][d] += ridgeLambda;
       }
-
       const coeffs = solveLinearSystem(XtX, XtY);
       if (!coeffs) return null;
-      return coeffs; // ordered as [x^degree, ..., 1]
+      return coeffs;
     } catch (err) {
       console.error('Error calculating polynomial coefficients for efficiency:', err);
       return null;
@@ -432,51 +332,34 @@ const FlowCalculate = () => {
 
   const calculateDiameter = (modelName) => {
     try {
-      // Extract numbers from model name
       const numbers = modelName.match(/\d+/);
       if (numbers) {
-        // Convert to number and divide by 1000
         const diameterValue = parseInt(numbers[0]) / 1000;
-        // Dispatch to Redux
         dispatch(setDiameter(diameterValue));
-        console.log('diameter', diameterValue);
         return diameterValue;
       }
-      // Dispatch default value to Redux
       dispatch(setDiameter(0.63));
-      return 0.63; // Default value if no numbers found
+      return 0.63;
     } catch (error) {
-      console.error('Error calculating diameter:', error);
-      // Dispatch default value to Redux
-      dispatch(setDiameter(0.63));
-      return 0.63; // Default value if error occurs
+    } finally {
     }
   };
 
-  // ===== POINT GENERATION FUNCTIONS =====
   const generatePoints = (coeffs, basePoints) => {
     const validPoints = basePoints.filter(point => 
       point.flowRate !== '' && point.totalPressure !== '' && point.efficiency !== ''
     );
-    
     if (validPoints.length < 2) return [];
-
     const sortedPoints = [...validPoints].sort((a, b) => 
       parseFloat(a.flowRate) - parseFloat(b.flowRate)
     );
-    
     const firstPoint = sortedPoints[0];
     const lastPoint = sortedPoints[sortedPoints.length - 1];
-    
-
     const rpm = firstPoint.rpm ;
-    
     const PI = Math.PI;
     const DIAMETER_SQUARED = diameter * diameter;
     const VELOCITY_CONSTANT = 4 / (PI * DIAMETER_SQUARED);
-    
     const generatedPoints = [];
-
     const keyPoints = [
       { index: 0, flowRate: parseFloat(firstPoint.flowRate), totalPressure: parseFloat(firstPoint.totalPressure), efficiency: parseFloat(firstPoint.efficiency) },
       { index: 249, flowRate: parseFloat(sortedPoints[1].flowRate), totalPressure: parseFloat(sortedPoints[1].totalPressure), efficiency: parseFloat(sortedPoints[1].efficiency) },
@@ -484,7 +367,6 @@ const FlowCalculate = () => {
       { index: 749, flowRate: parseFloat(sortedPoints[3].flowRate), totalPressure: parseFloat(sortedPoints[3].totalPressure), efficiency: parseFloat(sortedPoints[3].efficiency) },
       { index: 999, flowRate: parseFloat(lastPoint.flowRate), totalPressure: parseFloat(lastPoint.totalPressure), efficiency: parseFloat(lastPoint.efficiency) }
     ];
-
     const calculateFlowRate = (index) => {
       let segment = 0;
       for (let i = 1; i < keyPoints.length; i++) {
@@ -493,49 +375,34 @@ const FlowCalculate = () => {
           break;
         }
       }
-
       const startPoint = keyPoints[segment];
       const endPoint = keyPoints[segment + 1];
       const segmentLength = endPoint.index - startPoint.index;
       const progress = (index - startPoint.index) / segmentLength;
-      
       const flowRate = startPoint.flowRate + (endPoint.flowRate - startPoint.flowRate) * progress;
-      
       return Number(flowRate.toFixed(6));
     };
-
     const calculatePressure = (flowRate) => {
       const totalPressure = (coeffs.a * flowRate * flowRate) + 
                           (coeffs.b * flowRate) + 
                           coeffs.c;
-
       return Number(totalPressure.toFixed(6));
     };
-
     const calculateBrakePower = (flowRate, totalPressure, efficiency) => {
       const flowRateNum = Number(flowRate);
       const totalPressureNum = Number(totalPressure);
       const efficiencyDecimal = Number(efficiency) / 100;
-      
       const brakePower = (flowRateNum * totalPressureNum) / (efficiencyDecimal * 1000);
-      
       return Number(brakePower.toFixed(6));
     };
-
-    // Prepare cubic coefficients for LPA using points 1,2,4,5
     const cubicCoeffsLpa = calculateCubicCoefficientsForLpa(basePoints);
-
-    // Prepare quintic polynomial for efficiency vs flowRate
     const quinticEffCoeffs = calculatePolynomialCoefficientsForEfficiency(basePoints, 5, 1e-6);
-
     for (let i = 0; i < 1000; i++) {
       let flowRate, totalPressure, efficiency;
-
       const keyPoint = keyPoints.find(kp => kp.index === i);
       if (keyPoint) {
         flowRate = keyPoint.flowRate;
         totalPressure = keyPoint.totalPressure;
-        // Even at key points, evaluate via quintic to ensure smooth curve; fallback to entered value if unavailable
         if (quinticEffCoeffs) {
           efficiency = evaluatePolynomial(quinticEffCoeffs, flowRate);
         } else {
@@ -550,15 +417,11 @@ const FlowCalculate = () => {
           efficiency = generateInterpolatedEfficiency(i, sortedPoints);
         }
       }
-      
-      // Clamp and format efficiency
       if (!isFinite(efficiency)) efficiency = 0;
       efficiency = Math.max(0, Math.min(100, Number(efficiency)));
-      
       const velocity = VELOCITY_CONSTANT * flowRate;
       const brakePower = calculateBrakePower(flowRate, totalPressure, efficiency);
       const lpaValue = evaluateCubic(cubicCoeffsLpa, flowRate);
-      
       generatedPoints.push({
         rpm: rpm,
         flowRate: flowRate.toFixed(6),
@@ -569,38 +432,25 @@ const FlowCalculate = () => {
         lpa: Number(lpaValue ?? 0).toFixed(6)
       });
     }
-    
     return generatedPoints;
   };
 
   const generateNextRpmPoints = (basePoints, currentRpm, newRpm) => {
     const rpmRatio = newRpm / currentRpm;
     const pressureRatio = Math.pow(rpmRatio, 2);
-    
     const newPoints = [];
     const velocityConstant = 4 / (Math.PI * Math.pow(diameter, 2));
     const lpaDelta = 50 * Math.log10(rpmRatio);
-    
-    // Apply scaling laws to each of the 1000 base points
     for (let i = 0; i < 1000; i++) {
       const basePoint = basePoints[i];
-      
-      // Apply scaling laws
       const flowRate = parseFloat(basePoint.flowRate) * rpmRatio;
       const totalPressure = parseFloat(basePoint.totalPressure) * pressureRatio;
       const efficiency = parseFloat(basePoint.efficiency);
       const z = parseFloat(basePoint.lpa || 0);
-      
-      // Calculate velocity using the scaled flow rate
       const velocity = flowRate * velocityConstant;
-      
-      // Calculate brake power using the scaled values
       const efficiencyDecimal = efficiency / 100;
       const brakePower = (flowRate * totalPressure) / (efficiencyDecimal * 1000);
-      
-      // Calculate LPA using provided relation with base RPM
       const lpa = z + lpaDelta;
-      
       newPoints.push({
         rpm: newRpm,
         flowRate: Number(flowRate).toFixed(6),
@@ -611,49 +461,25 @@ const FlowCalculate = () => {
         lpa: Number(lpa).toFixed(6)
       });
     }
-    
     return newPoints;
   };
 
-  // ===== EVENT HANDLERS =====
   const handleSubmit = (e) => {
     e.preventDefault();
-    
     const validPoints = dataPoints.filter(point => 
       point.flowRate !== '' && point.totalPressure !== ''
     );
-    
     if (validPoints.length >= 2) {
       setIsLoading(true);
-      
-      // Calculate coefficients automatically using points 1, 3, and 5
       const coeffs = calculateQuadraticCoefficients(dataPoints);
-      
-      // Display Quadratic Equation in console
-      console.log('Quadratic Equation:');
-      console.log(`y = ${coeffs.a.toFixed(2)}x² + ${coeffs.b.toFixed(2)}x + ${coeffs.c.toFixed(2)}`);
-      console.log('Where:');
-      console.log('y = Total Pressure');
-      console.log('x = Flow Rate');
-      console.log('\nPoints used for calculation:');
-      console.log(`Point 1: (${dataPoints[0].flowRate}, ${dataPoints[0].totalPressure})`);
-      console.log(`Point 3: (${dataPoints[2].flowRate}, ${dataPoints[2].totalPressure})`);
-      console.log(`Point 5: (${dataPoints[4].flowRate}, ${dataPoints[4].totalPressure})`);
-      
       setQuadraticCoefficients(coeffs);
       const points = generatePoints(coeffs, dataPoints);
-      
       dispatch(setCalculatedPoints(points));
       dispatch(setAllDataGenerated(points));
-      
       const currentRpm = parseFloat(validPoints[0].rpm) || 900;
-      dispatch(setAllRpmPoints({
-        [currentRpm]: points
-      }));
-      
+      dispatch(setAllRpmPoints({ [currentRpm]: points }));
       dispatch(setSelectedRpm(currentRpm));
       dispatch(setNextRpmPoints(points));
-      
       setNextRpm((currentRpm + 1).toString());
       setShowResults(true);
       setIsLoading(false);
@@ -667,43 +493,37 @@ const FlowCalculate = () => {
       setError('Please enter a valid RPM value and ensure base points are calculated first.');
       return;
     }
-    
     const currentRpm = parseFloat(calculatedPoints[0].rpm);
     const targetRpm = parseFloat(nextRpm);
-    
     if (isNaN(targetRpm) || targetRpm <= 0) {
       setError('Please enter a valid positive number for RPM.');
       return;
     }
-
     if (targetRpm <= currentRpm) {
       setError('Please enter an RPM value greater than the current RPM: ' + currentRpm);
       return;
     }
-
     if (targetRpm < 250 || targetRpm > 3750) {
       setError('RPM must be between 250 and 3750.');
       return;
     }
-    
     setError('');
-    setIsLoading(true);
-    const allPoints = { ...allRpmPoints };
-    let allGeneratedData = [...calculatedPoints];
-    
-    for (let rpm = currentRpm + 1; rpm <= targetRpm; rpm++) {
-      const rpmPoints = generateNextRpmPoints(calculatedPoints, currentRpm, rpm);
-      allPoints[rpm] = rpmPoints;
-      allGeneratedData = [...allGeneratedData, ...rpmPoints];
-    }
-    
-    dispatch(setAllRpmPoints(allPoints));
-    dispatch(setAllDataGenerated(allGeneratedData));
-    
-    const firstGeneratedRpm = currentRpm + 1;
-    dispatch(setSelectedRpm(firstGeneratedRpm));
-    dispatch(setNextRpmPoints(allPoints[firstGeneratedRpm]));
-    setIsLoading(false);
+    setIsGenerating(true);
+    setTimeout(() => {
+      const allPoints = { ...allRpmPoints };
+      let allGeneratedData = [...calculatedPoints];
+      for (let rpm = currentRpm + 1; rpm <= targetRpm; rpm++) {
+        const rpmPoints = generateNextRpmPoints(calculatedPoints, currentRpm, rpm);
+        allPoints[rpm] = rpmPoints;
+        allGeneratedData = [...allGeneratedData, ...rpmPoints];
+      }
+      dispatch(setAllRpmPoints(allPoints));
+      dispatch(setAllDataGenerated(allGeneratedData));
+      const firstGeneratedRpm = currentRpm + 1;
+      dispatch(setSelectedRpm(firstGeneratedRpm));
+      dispatch(setNextRpmPoints(allPoints[firstGeneratedRpm]));
+      setIsGenerating(false);
+    }, 0);
   };
 
   const handleRpmSelect = (e) => {
@@ -712,24 +532,19 @@ const FlowCalculate = () => {
     dispatch(setNextRpmPoints(allRpmPoints[selectedRpm]));
   };
 
-  // ===== RENDER =====
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#021F59] to-[#03178C] py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-white py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 shadow-xl border border-white/20"
+          className=" bg-gradient-to-br from-[#E6F0FF] via-[#DDEBFF] to-[#CFE3FF] rounded-2xl p-6 shadow-sm border border-[#E5EDFF] relative"
         >
-          {/* ===== HEADER ===== */}
-          <h2 className="text-3xl font-bold text-white mb-8 text-center">Selector</h2>
-          
-          {/* ===== FAN TYPE AND MODEL SELECTION ===== */}
+          <span className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-[#FDBA74]"></span>
+          <h2 className="text-3xl font-bold text-[#1E3A8A] mb-8 text-center">Selector</h2>
           <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
-              <label className="block text-lg font-semibold text-white mb-3">
-                Fan Type
-              </label>
+            <div className="bg-white rounded-xl p-4 border border-[#E5EDFF]">
+              <label className="block text-lg font-semibold text-[#1F3B73] mb-3">Fan Type</label>
               <select
                 value={fanType}
                 onChange={(e) => {
@@ -737,106 +552,94 @@ const FlowCalculate = () => {
                   setSelectedModel('');
                   setModels([]);
                 }}
-                className="w-full px-4 py-3 bg-[#021F59] border border-blue-400/30 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                className="w-full px-4 py-3 bg-white border border-[#C7DAFF] rounded-xl text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent"
               >
-                <option value="" className="bg-[#021F59]">Select Fan Type</option>
-                <option value="axial" className="bg-[#021F59]">Axial</option>
-                <option value="centrifugal" className="bg-[#021F59]">Centrifugal</option>
+                <option value="" className="bg-white">Select Fan Type</option>
+                <option value="axial" className="bg-white">Axial</option>
+                <option value="centrifugal" className="bg-white">Centrifugal</option>
               </select>
             </div>
-
-            <div className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
-              <label className="block text-lg font-semibold text-white mb-3">
-                Model
-              </label>
+            <div className="bg-white rounded-xl p-4 border border-[#E5EDFF]">
+              <label className="block text-lg font-semibold text-[#1F3B73] mb-3">Model</label>
               <select
                 value={selectedModel}
                 onChange={handleModelChange}
                 disabled={!fanType || isLoadingModels}
-                className="w-full px-4 py-3 bg-[#021F59] border border-blue-400/30 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent disabled:bg-[#021F59]/50 disabled:text-white/50"
+                className="w-full px-4 py-3 bg-white border border-[#C7DAFF] rounded-xl text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent disabled:bg-[#F1F5FF] disabled:text-[#94A3B8]"
               >
-                <option value="" className="bg-[#021F59]">Select Model</option>
+                <option value="" className="bg-white">Select Model</option>
                 {models.map((model) => (
-                  <option key={model._id} value={model._id} className="bg-[#021F59]">
+                  <option key={model._id} value={model._id} className="bg-white">
                     {model.name}
                   </option>
                 ))}
               </select>
-              {isLoadingModels && (
-                <p className="mt-2 text-blue-300 text-sm">Loading models...</p>
-              )}
-              {modelError && (
-                <p className="mt-2 text-red-300 text-sm">{modelError}</p>
-              )}
+              {isLoadingModels && <p className="mt-2 text-[#3B82F6] text-sm">Loading models...</p>}
+              {modelError && <p className="mt-2 text-red-600 text-sm">{modelError}</p>}
             </div>
           </div>
-
-          {/* ===== DATA POINTS SECTION ===== */}
           <div className="mb-8">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-semibold text-white">Data Points</h3>
+              <h3 className="text-xl font-semibold text-[#1E3A8A]">Data Points</h3>
               <button
                 onClick={loadExampleData}
                 disabled={!selectedModel}
-                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-semibold hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-[#021F59] disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed transition-all duration-200"
+                className="px-6 py-3 bg-gradient-to-r from-[#60A5FA] to-[#3B82F6] text-white rounded-xl font-semibold hover:from-[#3B82F6] hover:to-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:ring-offset-2 focus:ring-offset-white disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 border border-transparent hover:border-[#F59E0B]"
               >
                 Load Model Data
               </button>
             </div>
-            
             {error && (
-              <div className="mb-6 p-4 bg-red-500/20 border border-red-400/30 text-red-200 rounded-xl">
-                {error}
-              </div>
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl">{error}</div>
             )}
-
             <div className="space-y-4">
               {dataPoints.map((point, index) => (
-                <div key={index} className="bg-white/5 backdrop-blur-sm rounded-xl p-4 border border-white/10">
+                <div key={index} className="bg-white rounded-xl p-4 border border-[#E5EDFF] relative">
+                  <span className="absolute inset-x-0 top-0 h-1 rounded-t-xl bg-[#FDBA74]"></span>
                   <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-white/80 mb-2">RPM</label>
+                      <label className="block text-sm font-medium text-[#334155] mb-2">RPM</label>
                       <input
                         type="number"
                         value={point.rpm}
                         onChange={(e) => handleInputChange(index, 'rpm', e.target.value)}
-                        className="w-full px-4 py-2 bg-[#021F59] border border-blue-400/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                        className="w-full px-4 py-2 bg-white border border-[#C7DAFF] rounded-lg text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-white/80 mb-2">Flow Rate</label>
+                      <label className="block text-sm font-medium text-[#334155] mb-2">Flow Rate</label>
                       <input
                         type="number"
                         value={point.flowRate}
                         onChange={(e) => handleInputChange(index, 'flowRate', e.target.value)}
-                        className="w-full px-4 py-2 bg-[#021F59] border border-blue-400/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                        className="w-full px-4 py-2 bg-white border border-[#C7DAFF] rounded-lg text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-white/80 mb-2">Total Pressure</label>
+                      <label className="block text-sm font-medium text-[#334155] mb-2">Total Pressure</label>
                       <input
                         type="number"
                         value={point.totalPressure}
                         onChange={(e) => handleInputChange(index, 'totalPressure', e.target.value)}
-                        className="w-full px-4 py-2 bg-[#021F59] border border-blue-400/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                        className="w-full px-4 py-2 bg-white border border-[#C7DAFF] rounded-lg text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-white/80 mb-2">Efficiency (%)</label>
+                      <label className="block text-sm font-medium text-[#334155] mb-2">Efficiency (%)</label>
                       <input
                         type="number"
                         value={point.efficiency}
                         onChange={(e) => handleInputChange(index, 'efficiency', e.target.value)}
-                        className="w-full px-4 py-2 bg-[#021F59] border border-blue-400/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                        className="w-full px-4 py-2 bg-white border border-[#C7DAFF] rounded-lg text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-white/80 mb-2">LPA</label>
+                      <label className="block text-sm font-medium text-[#334155] mb-2">LPA</label>
                       <input
                         type="number"
                         value={point.lpa}
                         onChange={(e) => handleInputChange(index, 'lpa', e.target.value)}
-                        className="w-full px-4 py-2 bg-[#021F59] border border-blue-400/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                        className="w-full px-4 py-2 bg-white border border-[#C7DAFF] rounded-lg text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent"
                       />
                     </div>
                   </div>
@@ -844,62 +647,48 @@ const FlowCalculate = () => {
               ))}
             </div>
           </div>
-
-          {/* ===== ACTION BUTTONS ===== */}
           <div className="flex flex-wrap gap-4 justify-center">
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={handleSubmit}
               disabled={isLoading}
-              className="w-full py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-lg disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed"
+              className="w-full py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#60A5FA] to-[#3B82F6] hover:from-[#3B82F6] hover:to-[#2563EB] transition-all duration-200 shadow disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed border border-transparent hover:border-[#F59E0B]"
             >
               {isLoading ? 'Calculating...' : 'Calculate'}
             </motion.button>
           </div>
-
-          {/* ===== RESULTS SECTION ===== */}
           {showResults && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-8 bg-white/5 backdrop-blur-sm rounded-xl p-6 border border-white/10"
-            >
-              <h3 className="text-xl font-semibold text-white mb-4">Results</h3>
-              
-              {/* ===== NEXT RPM INPUT ===== */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-8 bg-white rounded-xl p-6 border border-[#E5EDFF] relative">
+              <span className="absolute inset-x-0 top-0 h-1 rounded-t-xl bg-[#FDBA74]"></span>
+              <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Results</h3>
               <div className="mb-6">
                 <div className="flex flex-wrap gap-4 items-end">
                   <div className="flex-1">
-                    <label className="block text-sm font-medium text-white/80 mb-2">
-                      Next RPM
-                    </label>
+                    <label className="block text-sm font-medium text-[#334155] mb-2">Next RPM</label>
                     <input
                       type="number"
                       value={nextRpm}
                       onChange={(e) => setNextRpm(e.target.value)}
-                      className="w-full px-4 py-2 bg-[#021F59] border border-blue-400/30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                      className="w-full px-4 py-2 bg-white border border-[#C7DAFF] rounded-lg text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent"
                       placeholder="Enter next RPM"
                     />
                   </div>
-                  <button
-                    onClick={handleGenerateNextRpm}
-                    disabled={isLoading}
-                    className="px-6 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-semibold hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-[#021F59] disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed transition-all duration-200"
-                  >
-                    Generate Next RPM
+                  <button onClick={handleGenerateNextRpm} disabled={isGenerating} className="px-6 py-2 bg-gradient-to-r from-[#60A5FA] to-[#3B82F6] text-white rounded-xl font-semibold hover:from-[#3B82F6] hover:to-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:ring-offset-2 focus:ring-offset-white disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all duration-200 border border-transparent hover:border-[#F59E0B]">
+                    {isGenerating ? (
+                      <div className="flex items-center">
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                        Generating...
+                      </div>
+                    ) : (
+                      'Generate Next RPM'
+                    )}
                   </button>
                 </div>
-                {error && (
-                  <p className="mt-2 text-red-300 text-sm">{error}</p>
-                )}
+                {error && <p className="mt-2 text-red-600 text-sm">{error}</p>}
               </div>
-
-              {/* ===== RPM SELECTION ===== */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-white/80 mb-2">
-                  Select RPM
-                </label>
+                <label className="block text-sm font-medium text-[#334155] mb-2">Select RPM</label>
                 <div className="relative">
                   <div className="overflow-x-auto scrollbar-hide">
                     <div className="flex space-x-2 pb-2 min-w-full">
@@ -911,8 +700,8 @@ const FlowCalculate = () => {
                             onClick={() => handleRpmSelect({ target: { value: rpm } })}
                             className={`px-4 py-2 rounded-lg whitespace-nowrap transition-all duration-200 ${
                               selectedRpm === Number(rpm)
-                                ? 'bg-blue-500 text-white shadow-lg'
-                                : 'bg-[#021F59] text-white/80 hover:bg-blue-500/50'
+                                ? 'bg-[#60A5FA] text-white shadow'
+                                : 'bg-white border border-[#C7DAFF] text-[#1F3B73] hover:bg-[#EEF4FF]'
                             }`}
                           >
                             {rpm} RPM
@@ -920,36 +709,34 @@ const FlowCalculate = () => {
                         ))}
                     </div>
                   </div>
-                  <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-[#021F59] to-transparent pointer-events-none"></div>
+                  <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none"></div>
                 </div>
               </div>
-
-              {/* ===== GENERATED POINTS TABLE ===== */}
               <div className="relative mb-6">
                 <div className="overflow-x-auto">
-                  <div className="max-h-[500px] overflow-y-auto rounded-lg border border-blue-400/30 bg-[#021F59]/50">
+                  <div className="max-h-[500px] overflow-y-auto rounded-lg border border-[#E5EDFF] bg-white">
                     <table className="w-full text-left">
-                      <thead className="sticky top-0 bg-[#021F59] z-10">
+                      <thead className="sticky top-0 bg-[#EEF4FF] z-10">
                         <tr>
-                          <th className="px-4 py-3 text-white font-semibold">RPM</th>
-                          <th className="px-4 py-3 text-white font-semibold">Flow Rate</th>
-                          <th className="px-4 py-3 text-white font-semibold">Total Pressure</th>
-                          <th className="px-4 py-3 text-white font-semibold">Velocity</th>
-                          <th className="px-4 py-3 text-white font-semibold">Efficiency</th>
-                          <th className="px-4 py-3 text-white font-semibold">Brake Power</th>
-                          <th className="px-4 py-3 text-white font-semibold">LPA</th>
+                          <th className="px-4 py-3 text-[#1F3B73] font-semibold">RPM</th>
+                          <th className="px-4 py-3 text-[#1F3B73] font-semibold">Flow Rate</th>
+                          <th className="px-4 py-3 text-[#1F3B73] font-semibold">Total Pressure</th>
+                          <th className="px-4 py-3 text-[#1F3B73] font-semibold">Velocity</th>
+                          <th className="px-4 py-3 text-[#1F3B73] font-semibold">Efficiency</th>
+                          <th className="px-4 py-3 text-[#1F3B73] font-semibold">Brake Power</th>
+                          <th className="px-4 py-3 text-[#1F3B73] font-semibold">LPA</th>
                         </tr>
                       </thead>
                       <tbody>
                         {nextRpmPoints.map((point, index) => (
-                          <tr key={index} className="border-b border-blue-400/10 hover:bg-white/5 transition-colors duration-150">
-                            <td className="px-4 py-3 text-white/80">{point.rpm}</td>
-                            <td className="px-4 py-3 text-white/80">{point.flowRate}</td>
-                            <td className="px-4 py-3 text-white/80">{point.totalPressure}</td>
-                            <td className="px-4 py-3 text-white/80">{point.velocity}</td>
-                            <td className="px-4 py-3 text-white/80">{point.efficiency}%</td>
-                            <td className="px-4 py-3 text-white/80">{point.brakePower}</td>
-                            <td className="px-4 py-3 text-white/80">{point.lpa}</td>
+                          <tr key={index} className="border-b border-[#E5EDFF] hover:bg-[#F7FAFF] transition-colors duration-150">
+                            <td className="px-4 py-3 text-[#334155]">{point.rpm}</td>
+                            <td className="px-4 py-3 text-[#334155]">{point.flowRate}</td>
+                            <td className="px-4 py-3 text-[#334155]">{point.totalPressure}</td>
+                            <td className="px-4 py-3 text-[#334155]">{point.velocity}</td>
+                            <td className="px-4 py-3 text-[#334155]">{point.efficiency}%</td>
+                            <td className="px-4 py-3 text-[#334155]">{point.brakePower}</td>
+                            <td className="px-4 py-3 text-[#334155]">{point.lpa}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -957,15 +744,13 @@ const FlowCalculate = () => {
                   </div>
                 </div>
               </div>
-
-              {/* ===== QUADRATIC COEFFICIENTS ===== */}
               <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-[#021F59] rounded-lg p-4 border border-blue-400/30">
-                  <h4 className="text-lg font-medium text-white mb-2">Quadratic Coefficients</h4>
+                <div className="bg-white rounded-lg p-4 border border-[#E5EDFF]">
+                  <h4 className="text-lg font-medium text-[#1E3A8A] mb-2">Quadratic Coefficients</h4>
                   <div className="space-y-2">
-                    <p className="text-white/80">a: {quadraticCoefficients.a?.toFixed(6) || '0.000000'}</p>
-                    <p className="text-white/80">b: {quadraticCoefficients.b?.toFixed(6) || '0.000000'}</p>
-                    <p className="text-white/80">c: {quadraticCoefficients.c?.toFixed(6) || '0.000000'}</p>
+                    <p className="text-[#334155]">a: {quadraticCoefficients.a?.toFixed(6) || '0.000000'}</p>
+                    <p className="text-[#334155]">b: {quadraticCoefficients.b?.toFixed(6) || '0.000000'}</p>
+                    <p className="text-[#334155]">c: {quadraticCoefficients.c?.toFixed(6) || '0.000000'}</p>
                   </div>
                 </div>
               </div>

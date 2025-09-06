@@ -1,25 +1,26 @@
 import { useState } from "react";
-import AddUser from "./Control/AddUser";
-import AllUsers from "./Control/AllUsers";
-import AllModels from "./Control/AllModels";
-import AddModel from "./Control/AddModel";
+import AddUser from "../Components/Control/AddUser";
+import AllUsers from "../Components/Control/AllUsers";
+import AllModels from "../Components/Control/AllModels";
+import AddModel from "../Components/Control/AddModel";
 
 const Control = () => {
   const [activeSection, setActiveSection] = useState("add-user");
 
   return (
-    <div className="min-h-screen bg-[#021F59] flex">
+    <div className="min-h-screen bg-white flex">
       {/* Sidebar */}
-      <div className="w-64 bg-[#03178C]/90 backdrop-blur-md border-r border-[#034AA6]/30">
+      <div className="w-64 bg-white border-r border-[#E5EDFF]">
         <div className="p-4">
-          <h1 className="text-xl font-bold text-white mb-6">Control Panel</h1>
-          <nav className="space-y-2">
+          <h1 className="text-xl font-bold text-[#1E3A8A] mb-2">Control Panel</h1>
+          <div className="h-1 w-16 bg-[#FDBA74] rounded"></div>
+          <nav className="space-y-2 mt-4">
             <button
               onClick={() => setActiveSection("add-user")}
               className={`w-full text-left px-4 py-2 rounded-lg transition-all duration-200 ${
                 activeSection === "add-user"
-                  ? "bg-[#034AA6] text-white"
-                  : "text-white/70 hover:bg-[#034AA6]/50"
+                  ? "bg-[#D6E4FF] text-[#1E40AF] border border-[#C7DAFF] border-l-4 border-l-[#F59E0B]"
+                  : "text-[#1F3B73] hover:bg-[#EEF4FF]"
               }`}
             >
               Add User
@@ -28,8 +29,8 @@ const Control = () => {
               onClick={() => setActiveSection("all-users")}
               className={`w-full text-left px-4 py-2 rounded-lg transition-all duration-200 ${
                 activeSection === "all-users"
-                  ? "bg-[#034AA6] text-white"
-                  : "text-white/70 hover:bg-[#034AA6]/50"
+                  ? "bg-[#D6E4FF] text-[#1E40AF] border border-[#C7DAFF] border-l-4 border-l-[#F59E0B]"
+                  : "text-[#1F3B73] hover:bg-[#EEF4FF]"
               }`}
             >
               All Users
@@ -39,8 +40,8 @@ const Control = () => {
               onClick={() => setActiveSection("add-model")}
               className={`w-full text-left px-4 py-2 rounded-lg transition-all duration-200 ${
                 activeSection === "add-model"
-                  ? "bg-[#034AA6] text-white"
-                  : "text-white/70 hover:bg-[#034AA6]/50"
+                  ? "bg-[#D6E4FF] text-[#1E40AF] border border-[#C7DAFF] border-l-4 border-l-[#F59E0B]"
+                  : "text-[#1F3B73] hover:bg-[#EEF4FF]"
               }`}
             >
               Add Model
@@ -50,8 +51,8 @@ const Control = () => {
               onClick={() => setActiveSection("all-models")}
               className={`w-full text-left px-4 py-2 rounded-lg transition-all duration-200 ${
                 activeSection === "all-models"
-                  ? "bg-[#034AA6] text-white"
-                  : "text-white/70 hover:bg-[#034AA6]/50"
+                  ? "bg-[#D6E4FF] text-[#1E40AF] border border-[#C7DAFF] border-l-4 border-l-[#F59E0B]"
+                  : "text-[#1F3B73] hover:bg-[#EEF4FF]"
               }`}
             >
               All Models

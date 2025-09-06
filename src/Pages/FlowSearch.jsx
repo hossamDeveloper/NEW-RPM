@@ -141,8 +141,8 @@ const FlowSearch = () => {
             x: parseFloat(point.flowRate),
             y: parseFloat(point.totalPressure)
           })),
-          backgroundColor: 'rgba(54, 162, 235, 0.8)',
-          borderColor: 'rgba(54, 162, 235, 1)',
+          backgroundColor: 'rgba(99, 163, 255, 0.8)',
+          borderColor: 'rgba(56, 132, 255, 1)',
           borderWidth: 1,
           pointRadius: 3,
           pointHoverRadius: 5,
@@ -157,8 +157,8 @@ const FlowSearch = () => {
             x: selectedX,
             y: selectedY
           }],
-          backgroundColor: 'rgb(255, 99, 132)',
-          borderColor: 'rgb(255, 99, 132)',
+          backgroundColor: 'rgb(251, 146, 60)',
+          borderColor: 'rgb(234, 88, 12)',
           borderWidth: 3,
           pointRadius: 10,
           pointHoverRadius: 12,
@@ -177,8 +177,8 @@ const FlowSearch = () => {
             x: parseFloat(point.flowRate),
             y: parseFloat(point.brakePower)
           })),
-          backgroundColor: 'rgba(255, 99, 132, 0.8)',
-          borderColor: 'rgba(255, 99, 132, 1)',
+          backgroundColor: 'rgba(99, 163, 255, 0.8)',
+          borderColor: 'rgba(56, 132, 255, 1)',
           borderWidth: 1,
           pointRadius: 3,
           pointHoverRadius: 5,
@@ -193,8 +193,8 @@ const FlowSearch = () => {
             x: selectedX,
             y: parseFloat(closestPoint.brakePower)
           }],
-          backgroundColor: 'rgb(54, 162, 235)',
-          borderColor: 'rgb(54, 162, 235)',
+          backgroundColor: 'rgb(234, 88, 12)',
+          borderColor: 'rgb(234, 88, 12)',
           borderWidth: 3,
           pointRadius: 10,
           pointHoverRadius: 12,
@@ -246,7 +246,7 @@ const FlowSearch = () => {
       legend: {
         position: 'top',
         labels: {
-          color: 'white',
+          color: '#1F2937',
           font: {
             size: 14,
             weight: 'bold'
@@ -257,7 +257,7 @@ const FlowSearch = () => {
       title: {
         display: true,
         text: 'Flow Rate vs Total Pressure',
-        color: 'white',
+        color: '#1F2937',
         font: {
           size: 16,
           weight: 'bold'
@@ -268,7 +268,7 @@ const FlowSearch = () => {
         }
       },
       tooltip: {
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        backgroundColor: 'rgba(15, 23, 42, 0.9)',
         padding: 12,
         titleColor: 'white',
         bodyColor: 'white',
@@ -297,14 +297,14 @@ const FlowSearch = () => {
             xMax: searchResults[0]?.flowRate,
             yMin: 0,
             yMax: searchResults[0]?.totalPressure,
-            borderColor: 'rgba(255, 99, 132, 0.5)',
+            borderColor: 'rgba(234, 88, 12, 0.4)',
             borderWidth: 2,
             borderDash: [5, 5],
             label: {
               display: true,
               content: parseFloat(searchResults[0]?.flowRate).toFixed(4),
               position: 'start',
-              backgroundColor: 'rgba(255, 99, 132, 0.5)',
+              backgroundColor: 'rgba(234, 88, 12, 0.5)',
               color: 'white'
             }
           },
@@ -314,14 +314,14 @@ const FlowSearch = () => {
             xMax: searchResults[0]?.flowRate,
             yMin: searchResults[0]?.totalPressure,
             yMax: searchResults[0]?.totalPressure,
-            borderColor: 'rgba(255, 99, 132, 0.5)',
+            borderColor: 'rgba(234, 88, 12, 0.4)',
             borderWidth: 2,
             borderDash: [5, 5],
             label: {
               display: true,
               content: parseFloat(searchResults[0]?.totalPressure).toFixed(4),
               position: 'start',
-              backgroundColor: 'rgba(255, 99, 132, 0.5)',
+              backgroundColor: 'rgba(234, 88, 12, 0.5)',
               color: 'white'
             }
           }
@@ -335,7 +335,7 @@ const FlowSearch = () => {
         title: {
           display: true,
           text: 'Flow Rate',
-          color: 'white',
+          color: '#1F2937',
           font: {
             size: 14,
             weight: 'bold'
@@ -343,10 +343,10 @@ const FlowSearch = () => {
           padding: { top: 10 }
         },
         grid: {
-          color: 'rgba(255, 255, 255, 0.1)'
+          color: 'rgba(0, 0, 0, 0.06)'
         },
         ticks: {
-          color: 'white'
+          color: '#334155'
         },
         beginAtZero: true,
         min: 0
@@ -356,7 +356,7 @@ const FlowSearch = () => {
         title: {
           display: true,
           text: 'Total Pressure',
-          color: 'white',
+          color: '#1F2937',
           font: {
             size: 14,
             weight: 'bold'
@@ -364,10 +364,10 @@ const FlowSearch = () => {
           padding: { bottom: 10 }
         },
         grid: {
-          color: 'rgba(255, 255, 255, 0.1)'
+          color: 'rgba(0, 0, 0, 0.06)'
         },
         ticks: {
-          color: 'white'
+          color: '#334155'
         },
         beginAtZero: true,
         min: 0
@@ -404,14 +404,14 @@ const FlowSearch = () => {
             xMax: searchResults[0]?.flowRate,
             yMin: 0,
             yMax: searchResults[0]?.brakePower,
-            borderColor: 'rgba(54, 162, 235, 0.5)',
+            borderColor: 'rgba(234, 88, 12, 0.4)',
             borderWidth: 2,
             borderDash: [5, 5],
             label: {
               display: true,
               content: parseFloat(searchResults[0]?.flowRate).toFixed(4),
               position: 'start',
-              backgroundColor: 'rgba(54, 162, 235, 0.5)',
+              backgroundColor: 'rgba(234, 88, 12, 0.5)',
               color: 'white'
             }
           },
@@ -421,14 +421,14 @@ const FlowSearch = () => {
             xMax: searchResults[0]?.flowRate,
             yMin: searchResults[0]?.brakePower,
             yMax: searchResults[0]?.brakePower,
-            borderColor: 'rgba(54, 162, 235, 0.5)',
+            borderColor: 'rgba(234, 88, 12, 0.4)',
             borderWidth: 2,
             borderDash: [5, 5],
             label: {
               display: true,
               content: parseFloat(searchResults[0]?.brakePower).toFixed(4),
               position: 'start',
-              backgroundColor: 'rgba(54, 162, 235, 0.5)',
+              backgroundColor: 'rgba(234, 88, 12, 0.5)',
               color: 'white'
             }
           }
@@ -450,28 +450,29 @@ const FlowSearch = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#021F59] via-[#03178C] to-[#034AA6]">
-      <div className="space-y-8 p-6">
+    <div className="min-h-screen bg-white">
+      <div className="space-y-8 p-6 ">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
           className="text-center"
         >
-          <h2 className="text-2xl font-bold mb-4 text-white">Flow Search</h2>
-          <p className="text-white/90">Search for flow rates and pressures in your system</p>
+          <h2 className="text-2xl font-bold mb-4 text-[#1E3A8A]">Flow Search</h2>
+          <p className="text-[#475569]">Search for flow rates and pressures in your system</p>
         </motion.div>
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
-          className="bg-[#021F59]/20 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-[#034AA6]/30"
+          className=" bg-gradient-to-br from-[#E6F0FF] via-[#DDEBFF] to-[#CFE3FF] rounded-2xl p-6 shadow-sm border border-[#E5EDFF] relative"
         >
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <span className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-[#FDBA74]"></span>
+          <form onSubmit={handleSubmit} className="space-y-6 ">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-white text-sm font-semibold mb-2">
+                <label className="block text-[#1F3B73] text-sm font-semibold mb-2">
                   Flow Rate
                 </label>
                 <input
@@ -480,13 +481,13 @@ const FlowSearch = () => {
                   name="flowRate"
                   value={searchData.flowRate}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 rounded-xl bg-[#021F59]/20 border border-[#034AA6] text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#035AA6] focus:border-transparent transition-all"
+                  className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all"
                   placeholder="Enter flow rate"
                 />
               </div>
               
               <div>
-                <label className="block text-white text-sm font-semibold mb-2">
+                <label className="block text-[#1F3B73] text-sm font-semibold mb-2">
                   Static Pressure
                 </label>
                 <input
@@ -495,7 +496,7 @@ const FlowSearch = () => {
                   name="staticPressure"
                   value={searchData.staticPressure}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 rounded-xl bg-[#021F59]/20 border border-[#034AA6] text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#035AA6] focus:border-transparent transition-all"
+                  className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all"
                   placeholder="Enter static pressure"
                 />
               </div>
@@ -505,7 +506,7 @@ const FlowSearch = () => {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               type="submit"
-              className="w-full py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#03178C] to-[#034AA6] hover:from-[#034AA6] hover:to-[#03178C] transition-all duration-200 shadow-lg"
+              className="w-full py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#60A5FA] to-[#3B82F6] hover:from-[#3B82F6] hover:to-[#2563EB] transition-all duration-200 shadow border border-transparent hover:border-[#F59E0B]"
             >
               Search
             </motion.button>
@@ -523,30 +524,31 @@ const FlowSearch = () => {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, delay: 0.4 }}
-              className="bg-[#021F59]/20 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-[#034AA6]/30"
+              className="bg-gradient-to-br from-[#E6F0FF] via-[#DDEBFF] to-[#CFE3FF] rounded-2xl p-6 shadow-sm border border-[#E5EDFF] relative"
             >
-              <h3 className="text-xl font-semibold text-white mb-4">Calculated Values</h3>
+              <span className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-[#FDBA74]"></span>
+              <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Calculated Values</h3>
               <div className="overflow-x-auto">
-                <table className="min-w-full bg-[#021F59]/10 rounded-xl border border-[#034AA6]">
-                  <thead className="bg-[#03178C]/30">
+                <table className="min-w-full bg-white rounded-xl border border-[#E5EDFF]">
+                  <thead className="bg-[#EEF4FF]">
                     <tr>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">Flow Rate</th>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">Dynamic Pressure</th>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">Total Pressure</th>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">Flow Rate Error (%)</th>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">Pressure Error (%)</th>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">Average Error (%)</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">Flow Rate</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">Dynamic Pressure</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">Total Pressure</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">Flow Rate Error (%)</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">Pressure Error (%)</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">Average Error (%)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {searchResults.map((point, index) => (
-                      <tr key={index} className={index % 2 === 0 ? 'bg-[#03178C]/20' : 'bg-[#021F59]/10'}>
-                        <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.searchFlowRate.toFixed(4)}</td>
-                        <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.calculatedDynamicPressure.toFixed(4)}</td>
-                        <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.calculatedTotalPressure.toFixed(4)}</td>
-                        <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.flowRateError.toFixed(2)}%</td>
-                        <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.totalPressureError.toFixed(2)}%</td>
-                        <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.averageError.toFixed(2)}%</td>
+                      <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-[#F7FAFF]'}>
+                        <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.searchFlowRate.toFixed(4)}</td>
+                        <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.calculatedDynamicPressure.toFixed(4)}</td>
+                        <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.calculatedTotalPressure.toFixed(4)}</td>
+                        <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.flowRateError.toFixed(2)}%</td>
+                        <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.totalPressureError.toFixed(2)}%</td>
+                        <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.averageError.toFixed(2)}%</td>
                       </tr>
                     ))}
                   </tbody>
@@ -558,20 +560,21 @@ const FlowSearch = () => {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5, delay: 0.5 }}
-              className="bg-[#021F59]/20 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-[#034AA6]/30"
+              className="bg-gradient-to-br from-[#E6F0FF] via-[#DDEBFF] to-[#CFE3FF] rounded-2xl p-6 shadow-sm border border-[#E5EDFF] relative"
             >
-              <h3 className="text-xl font-semibold text-white mb-4">Closest Match</h3>
+              <span className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-[#FDBA74]"></span>
+              <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Closest Match</h3>
               <div className="overflow-x-auto">
-                <table className="min-w-full bg-[#021F59]/10 rounded-xl border border-[#034AA6]">
-                  <thead className="bg-[#03178C]/30">
+                <table className="min-w-full bg-white rounded-xl border border-[#E5EDFF]">
+                  <thead className="bg-[#EEF4FF]">
                     <tr>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">RPM</th>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">Flow Rate</th>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">Total Pressure</th>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">Velocity</th>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">Brake Power</th>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">Efficiency (%)</th>
-                      <th className="py-3 px-4 border-b border-[#034AA6] text-white">Lpa (dB)</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">RPM</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">Flow Rate</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">Total Pressure</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">Velocity</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">Brake Power</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">Efficiency (%)</th>
+                      <th className="py-3 px-4 border-b border-[#E5EDFF] text-[#1F3B73]">Lpa (dB)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -580,14 +583,14 @@ const FlowSearch = () => {
                       const lpa = 70 + 50 * Math.log10(rpm/1000);
 
                       return (
-                        <tr key={index} className={index % 2 === 0 ? 'bg-[#03178C]/20' : 'bg-[#021F59]/10'}>
-                          <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.rpm}</td>
-                          <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.flowRate}</td>
-                          <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.totalPressure}</td>
-                          <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.velocity}</td>
-                          <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.brakePower}</td>
-                          <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.efficiency}</td>
-                          <td className="py-3 px-4 border-b border-[#034AA6] text-white text-center">{point.lpa}</td>
+                        <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-[#F7FAFF]'}>
+                          <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.rpm}</td>
+                          <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.flowRate}</td>
+                          <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.totalPressure}</td>
+                          <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.velocity}</td>
+                          <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.brakePower}</td>
+                          <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.efficiency}</td>
+                          <td className="py-3 px-4 border-b border-[#E5EDFF] text-[#334155] text-center">{point.lpa}</td>
                         </tr>
                       );
                     })}
@@ -607,9 +610,10 @@ const FlowSearch = () => {
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.5, delay: 0.7 }}
-                  className="bg-[#021F59]/20 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-[#034AA6]/30"
+                  className="bg-gradient-to-br from-[#E6F0FF] via-[#DDEBFF] to-[#CFE3FF] rounded-2xl p-6 shadow-sm border border-[#E5EDFF] relative"
                 >
-                  <h4 className="text-xl font-semibold text-white mb-4">Flow Rate vs Total Pressure</h4>
+                  <span className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-[#FDBA74]"></span>
+                  <h4 className="text-xl font-semibold text-[#1E3A8A] mb-4">Flow Rate vs Total Pressure</h4>
                   <div className="h-[500px]">
                     <Scatter options={chartOptions} data={chartData.pressureChartData} />
                   </div>
@@ -618,9 +622,10 @@ const FlowSearch = () => {
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.5, delay: 0.8 }}
-                  className="bg-[#021F59]/20 backdrop-blur-md rounded-2xl p-6 shadow-xl border border-[#034AA6]/30"
+                  className="bg-gradient-to-br from-[#E6F0FF] via-[#DDEBFF] to-[#CFE3FF] rounded-2xl p-6 shadow-sm border border-[#E5EDFF] relative"
                 >
-                  <h4 className="text-xl font-semibold text-white mb-4">Flow Rate vs Brake Power</h4>
+                  <span className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-[#FDBA74]"></span>
+                  <h4 className="text-xl font-semibold text-[#1E3A8A] mb-4">Flow Rate vs Brake Power</h4>
                   <div className="h-[500px]">
                     <Scatter options={powerChartOptions} data={chartData.powerChartData} />
                   </div>
