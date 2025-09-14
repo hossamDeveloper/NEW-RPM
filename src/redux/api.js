@@ -3,7 +3,7 @@ import { store } from './store';
 import { logout } from './authSlice';
 
 const api = axios.create({
-  baseURL: 'https://notaty-6ryr.onrender.com/api/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL ,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',

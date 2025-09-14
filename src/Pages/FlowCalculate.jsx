@@ -78,7 +78,10 @@ const FlowCalculate = () => {
     queryKey: ['model', selectedModel],
     queryFn: async () => {
       const res = await api.get(`/model/${selectedModel}`);
+      console.log(res.data);
+      
       return res.data?.data;
+
     },
     enabled: !!selectedModel,
     staleTime: 5 * 60 * 1000,
@@ -223,29 +226,58 @@ const FlowCalculate = () => {
     return [M[0][n], M[1][n], M[2][n], M[3][n]];
   };
 
-  const calculateCubicCoefficientsForLpa = (points) => {
+  const solveLinearSystem5x5 = (A, b) => {
+    const n = 5;
+    const M = A.map((row, i) => [...row, b[i]]);
+    for (let col = 0; col < n; col++) {
+      let pivotRow = col;
+      for (let r = col + 1; r < n; r++) {
+        if (Math.abs(M[r][col]) > Math.abs(M[pivotRow][col])) pivotRow = r;
+      }
+      if (Math.abs(M[pivotRow][col]) < 1e-12) {
+        return null;
+      }
+      if (pivotRow !== col) {
+        const tmp = M[col];
+        M[col] = M[pivotRow];
+        M[pivotRow] = tmp;
+      }
+      const pivot = M[col][col];
+      for (let c = col; c <= n; c++) M[col][c] /= pivot;
+      for (let r = 0; r < n; r++) {
+        if (r === col) continue;
+        const factor = M[r][col];
+        for (let c = col; c <= n; c++) {
+          M[r][c] -= factor * M[col][c];
+        }
+      }
+    }
+    return [M[0][n], M[1][n], M[2][n], M[3][n], M[4][n]];
+  };
+
+  const calculateQuinticCoefficientsForLpa = (points) => {
     try {
-      const indices = [0, 1, 3, 4];
+      const indices = [0, 1, 2, 3, 4]; // الأرقام 1,2,3,4,5 بـ zero-based indexing
       const selected = indices.map(i => points[i]);
       if (selected.some(p => !p)) return null;
       const xs = selected.map(p => parseFloat(p.flowRate));
       const ys = selected.map(p => parseFloat(p.lpa));
       if (xs.some(x => isNaN(x)) || ys.some(y => isNaN(y))) return null;
-      const A = xs.map(x => [Math.pow(x, 3), Math.pow(x, 2), x, 1]);
-      const solution = solveLinearSystem4x4(A, ys);
+      const A = xs.map(x => [Math.pow(x, 4), Math.pow(x, 3), Math.pow(x, 2), x, 1]);
+      const solution = solveLinearSystem5x5(A, ys);
       if (!solution) return null;
-      const [a, b, c, d] = solution;
-      return { a, b, c, d };
+      const [a, b, c, d, e] = solution;
+      return { a, b, c, d, e };
     } catch (err) {
-      console.error('Error calculating cubic coefficients for LPA:', err);
+      console.error('Error calculating quintic coefficients for LPA:', err);
       return null;
     }
   };
 
-  const evaluateCubic = (coeffs, x) => {
+  const evaluateQuintic = (coeffs, x) => {
     if (!coeffs) return 0;
-    const { a, b, c, d } = coeffs;
-    return (a * x * x * x) + (b * x * x) + (c * x) + d;
+    const { a, b, c, d, e } = coeffs;
+    return (a * x * x * x * x) + (b * x * x * x) + (c * x * x) + (d * x) + e;
   };
 
   const solveLinearSystem = (A, b) => {
@@ -395,7 +427,7 @@ const FlowCalculate = () => {
       const brakePower = (flowRateNum * totalPressureNum) / (efficiencyDecimal * 1000);
       return Number(brakePower.toFixed(6));
     };
-    const cubicCoeffsLpa = calculateCubicCoefficientsForLpa(basePoints);
+    const quinticCoeffsLpa = calculateQuinticCoefficientsForLpa(basePoints);
     const quinticEffCoeffs = calculatePolynomialCoefficientsForEfficiency(basePoints, 5, 1e-6);
     for (let i = 0; i < 1000; i++) {
       let flowRate, totalPressure, efficiency;
@@ -421,7 +453,7 @@ const FlowCalculate = () => {
       efficiency = Math.max(0, Math.min(100, Number(efficiency)));
       const velocity = VELOCITY_CONSTANT * flowRate;
       const brakePower = calculateBrakePower(flowRate, totalPressure, efficiency);
-      const lpaValue = evaluateCubic(cubicCoeffsLpa, flowRate);
+      const lpaValue = evaluateQuintic(quinticCoeffsLpa, flowRate);
       generatedPoints.push({
         rpm: rpm,
         flowRate: flowRate.toFixed(6),
