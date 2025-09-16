@@ -6,6 +6,9 @@ const AddModel = () => {
   const [formData, setFormData] = useState({
     type: "",
     name: "",
+    factor: 0,
+    startRpmNumber: 0,
+    endRpmNumber: 0,
     points: [
       {
         rpm: 0,
@@ -16,6 +19,7 @@ const AddModel = () => {
       },
     ],
   });
+  const [notification, setNotification] = useState(null); // { type: 'success'|'error', message: string }
 
   const queryClient = useQueryClient();
 
@@ -26,10 +30,18 @@ const AddModel = () => {
       setFormData({
         type: "",
         name: "",
+        factor: 0,
+        startRpmNumber: 0,
+        endRpmNumber: 0,
         points: [
           { rpm: 0, flowRate: 0, totalPressure: 0, efficiency: 0, lpa: 0 },
         ],
       });
+      setNotification({ type: 'success', message: 'Model has been added successfully.' });
+    },
+    onError: (err) => {
+      const msg = err?.response?.data?.message || 'Failed to add model. Please try again.';
+      setNotification({ type: 'error', message: msg });
     }
   });
 
@@ -65,6 +77,9 @@ const AddModel = () => {
     e.preventDefault();
     const dataToSend = {
       ...formData,
+      factor: Number(formData.factor),
+      startRpmNumber: Number(formData.startRpmNumber),
+      endRpmNumber: Number(formData.endRpmNumber),
       points: formData.points.map(point => ({
         rpm: Number(point.rpm),
         flowRate: Number(point.flowRate),
@@ -73,14 +88,23 @@ const AddModel = () => {
         lpa: Number(point.lpa)
       }))
     };
+    console.log('AddModel payload:', dataToSend);
+    setNotification(null);
     addModelMutation.mutate(dataToSend);
   };
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-2xl font-semibold text-gray-800 mb-6">
+      <h2 className="text-2xl font-semibold text-gray-800 mb-4">
         Add New Model
       </h2>
+
+      {notification && (
+        <div className={`mb-4 p-3 rounded ${notification.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+          {notification.message}
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -110,6 +134,50 @@ const AddModel = () => {
             className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             required
           />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Factor:
+            </label>
+            <input
+              type="number"
+              step="any"
+              name="factor"
+              value={formData.factor}
+              onChange={handleChange}
+              className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Start RPM Number:
+            </label>
+            <input
+              type="number"
+              step="any"
+              name="startRpmNumber"
+              value={formData.startRpmNumber}
+              onChange={handleChange}
+              className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              End RPM Number:
+            </label>
+            <input
+              type="number"
+              step="any"
+              name="endRpmNumber"
+              value={formData.endRpmNumber}
+              onChange={handleChange}
+              className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
+            />
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -213,9 +281,17 @@ const AddModel = () => {
 
         <button
           type="submit"
-          className="w-full px-6 py-2.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors duration-200"
+          disabled={addModelMutation.isPending}
+          className={`w-full px-6 py-2.5 rounded-md transition-colors duration-200 ${addModelMutation.isPending ? 'bg-blue-300 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
         >
-          Submit
+          {addModelMutation.isPending ? (
+            <span className="inline-flex items-center gap-2">
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+              Submitting...
+            </span>
+          ) : (
+            'Submit'
+          )}
         </button>
       </form>
     </div>

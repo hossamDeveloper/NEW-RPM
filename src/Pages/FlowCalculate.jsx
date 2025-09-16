@@ -22,6 +22,8 @@ const FlowCalculate = () => {
     diameter
   } = useSelector((state) => state.flow);
 
+
+
   const [fanType, setFanType] = useState('');
   const [models, setModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState('');
@@ -103,7 +105,8 @@ const FlowCalculate = () => {
     setSelectedModel(modelId);
     const selectedModelObj = models.find(model => model._id === modelId);
     if (selectedModelObj) {
-      calculateDiameter(selectedModelObj.name);
+      const factorValue = Number(selectedModelObj.factor ?? 0);
+      dispatch(setDiameter(factorValue / 1000));
     }
   };
 
@@ -158,8 +161,8 @@ const FlowCalculate = () => {
           lpa: point.lpa || 0
         }));
         setDataPoints(formattedPoints);
-        if (modelData.diameter) {
-          dispatch(setDiameter(modelData.diameter));
+        if (modelData.factor !== undefined && modelData.factor !== null) {
+          dispatch(setDiameter(Number(modelData.factor) / 1000));
         }
         setError('');
       } else {

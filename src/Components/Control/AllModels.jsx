@@ -8,13 +8,24 @@ const AllModels = () => {
   const [formData, setFormData] = useState({
     type: '',
     name: '',
+    factor: 0,
+    startRpmNumber: 0,
+    endRpmNumber: 0,
     points: [
       { rpm: 0, flowRate: 0, totalPressure: 0, efficiency: 0, lpa: 0 }
     ]
   })
+  const [originalData, setOriginalData] = useState(null)
+  const [filters, setFilters] = useState({ axial: true, centrifugal: true })
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 9
+  const [confirmDelete, setConfirmDelete] = useState({ open: false, id: null, name: '' })
+  const [pendingPayload, setPendingPayload] = useState(null)
+  const [notification, setNotification] = useState(null) // {type:'success'|'error', message:string}
 
   const queryClient = useQueryClient()
 
+  console.log('payload',pendingPayload);
   const { data: models = [], isLoading, error } = useQuery({
     queryKey: ['models'],
     queryFn: async () => {
@@ -26,37 +37,77 @@ const AllModels = () => {
 
   const deleteMutation = useMutation({
     mutationFn: (id) => api.delete(`/model/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['models'] })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['models'] })
+      setNotification({ type: 'success', message: 'Model deleted successfully.' })
+    },
+    onError: (err) => {
+      const msg = err?.response?.data?.message || 'Failed to delete model.'
+      setNotification({ type: 'error', message: msg })
+    }
   })
 
+  // Update mutation style: mutationFn takes only id and uses the payload from state
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }) => api.patch(`/model/${id}`, payload),
+    mutationFn: (id) => api.patch(`/model/${id}`, pendingPayload || {}),
     onSuccess: () => {
       setEditingModel(null)
+      setPendingPayload(null)
+      setOriginalData(null)
       queryClient.invalidateQueries({ queryKey: ['models'] })
+      setNotification({ type: 'success', message: 'Model updated successfully.' })
+    },
+    onError: (err) => {
+      const msg = err?.response?.data?.message || 'Failed to update model.'
+      setNotification({ type: 'error', message: msg })
     }
   })
 
   const handleDelete = async (id) => {
+    if (!id) return
     deleteMutation.mutate(id)
   }
 
-  const handleEdit = (model) => {
-    setEditingModel(model)
-    setFormData({
-      type: model.type,
-      name: model.name,
-      points: model.points.map(point => ({
-        rpm: Number(point.rpm),
-        flowRate: Number(point.flowRate),
-        totalPressure: Number(point.totalPressure),
-        efficiency: Number(point.efficiency),
-        lpa: Number(point.lpa)
-      }))
-    })
+  const openDeleteConfirm = (model) => {
+    const modelId = model?._id || model?.id
+    setConfirmDelete({ open: true, id: modelId, name: model.name })
   }
 
-  const toggleExpanded = (modelId) => {
+  const closeDeleteConfirm = () => {
+    setConfirmDelete({ open: false, id: null, name: '' })
+  }
+
+  const confirmDeleteAction = () => {
+    if (confirmDelete.id) {
+      handleDelete(confirmDelete.id)
+    }
+    closeDeleteConfirm()
+  }
+
+  const normalizeModelToPayload = (model) => ({
+    type: model.type,
+    name: model.name,
+    factor: Number(model.factor ?? 0),
+    startRpmNumber: Number(model.startRpmNumber ?? 0),
+    endRpmNumber: Number(model.endRpmNumber ?? 0),
+    points: (model.points || []).map(p => ({
+      rpm: Number(p.rpm),
+      flowRate: Number(p.flowRate),
+      totalPressure: Number(p.totalPressure),
+      efficiency: Number(p.efficiency),
+      lpa: Number(p.lpa)
+    }))
+  })
+
+  const handleEdit = (model) => {
+    setEditingModel(model)
+    const normalized = normalizeModelToPayload(model)
+    setOriginalData(normalized)
+    setFormData(normalized)
+  }
+
+  const toggleExpanded = (modelIdRaw) => {
+    const modelId = modelIdRaw?._id || modelIdRaw?.id || modelIdRaw
     setExpandedCards(prev => ({
       ...prev,
       [modelId]: !prev[modelId]
@@ -81,15 +132,81 @@ const AllModels = () => {
     setFormData({ ...formData, points: newPoints })
   }
 
+  const buildDiff = (orig, updated) => {
+    if (!orig) return updated
+    const diff = {}
+    const keys = ['type','name','factor','startRpmNumber','endRpmNumber','points']
+    keys.forEach(k => {
+      const o = orig[k]
+      const u = updated[k]
+      if (k === 'points') {
+        if (JSON.stringify(o) !== JSON.stringify(u)) {
+          diff[k] = u
+        }
+      } else if (o !== u) {
+        diff[k] = u
+      }
+    })
+    return diff
+  }
+
   const handleUpdate = async (e) => {
     e.preventDefault()
     if (!editingModel) return
-    updateMutation.mutate({ id: editingModel._id, payload: formData })
+    const payload = {
+      type: formData.type,
+      name: formData.name,
+      factor: Number(formData.factor),
+      startRpmNumber: Number(formData.startRpmNumber),
+      endRpmNumber: Number(formData.endRpmNumber),
+      points: formData.points.map(p => ({
+        rpm: Number(p.rpm),
+        flowRate: Number(p.flowRate),
+        totalPressure: Number(p.totalPressure),
+        efficiency: Number(p.efficiency),
+        lpa: Number(p.lpa)
+      }))
+    }
+    const id = editingModel?._id || editingModel?.id
+    if (!id) return
+
+    const diff = buildDiff(originalData, payload)
+    if (Object.keys(diff).length === 0) {
+      setNotification({ type: 'success', message: 'No changes to update.' })
+      return
+    }
+
+    setPendingPayload(diff)
+    updateMutation.mutate(id)
   }
 
   const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value })
+    const { name, value } = e.target
+    if (name === 'factor' || name === 'startRpmNumber' || name === 'endRpmNumber') {
+      setFormData({ ...formData, [name]: value === '' ? '' : Number(value) })
+    } else {
+      setFormData({ ...formData, [name]: value })
+    }
   }
+
+  const handleFilterChange = (type) => {
+    setFilters(prev => {
+      const next = { ...prev, [type]: !prev[type] }
+      setPage(1)
+      return next
+    })
+  }
+
+  const filtered = models.filter(m => {
+    const t = (m.type || '').toLowerCase()
+    if (t === 'axial') return filters.axial
+    if (t === 'centrifugal') return filters.centrifugal
+    return true
+  })
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const pageClamped = Math.min(page, totalPages)
+  const startIdx = (pageClamped - 1) * PAGE_SIZE
+  const paged = filtered.slice(startIdx, startIdx + PAGE_SIZE)
 
   if (isLoading) return (
     <div className="relative bg-white rounded-lg shadow-sm p-8 border border-[#E5EDFF]">
@@ -113,6 +230,32 @@ const AllModels = () => {
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4 text-[#1E3A8A]">All Models</h1>
+
+      {notification && (
+        <div className={`mb-4 p-3 rounded ${notification.type==='success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+          {notification.message}
+        </div>
+      )}
+
+      <div className="mb-4 flex items-center gap-4">
+        <label className="inline-flex items-center gap-2 text-[#334155]">
+          <input
+            type="checkbox"
+            checked={filters.axial}
+            onChange={() => handleFilterChange('axial')}
+          />
+          <span>Axial</span>
+        </label>
+        <label className="inline-flex items-center gap-2 text-[#334155]">
+          <input
+            type="checkbox"
+            checked={filters.centrifugal}
+            onChange={() => handleFilterChange('centrifugal')}
+          />
+          <span>Centrifugal</span>
+        </label>
+      </div>
+
       {editingModel && (
         <div className="relative mb-4 p-4 border rounded bg-white border-[#E5EDFF]">
           <span className="absolute inset-x-0 top-0 h-1 rounded-t-lg bg-[#FDBA74]"></span>
@@ -142,6 +285,45 @@ const AllModels = () => {
                 className="border p-2 w-full rounded bg-white text-[#1F3B73] border-[#C7DAFF]"
                 required
               />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block mb-1 text-[#334155]">Factor:</label>
+                <input
+                  type="number"
+                  step="any"
+                  name="factor"
+                  value={formData.factor}
+                  onChange={handleInputChange}
+                  className="border p-2 w-full rounded bg-white text-[#1F3B73] border-[#C7DAFF]"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block mb-1 text-[#334155]">Start RPM Number:</label>
+                <input
+                  type="number"
+                  step="any"
+                  name="startRpmNumber"
+                  value={formData.startRpmNumber}
+                  onChange={handleInputChange}
+                  className="border p-2 w-full rounded bg-white text-[#1F3B73] border-[#C7DAFF]"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block mb-1 text-[#334155]">End RPM Number:</label>
+                <input
+                  type="number"
+                  step="any"
+                  name="endRpmNumber"
+                  value={formData.endRpmNumber}
+                  onChange={handleInputChange}
+                  className="border p-2 w-full rounded bg-white text-[#1F3B73] border-[#C7DAFF]"
+                  required
+                />
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -242,17 +424,47 @@ const AllModels = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {models && models.length > 0 ? (
-          models.map((model) => {
-            const isExpanded = expandedCards[model._id]
+        {paged && paged.length > 0 ? (
+          paged.map((model) => {
+            const modelId = model?._id || model?.id
+            const isExpanded = expandedCards[modelId]
             const pointsToShow = isExpanded ? model.points : model.points?.slice(0, 2)
             const hasMorePoints = model.points && model.points.length > 2
 
             return (
-              <div key={model._id} className="relative border p-4 rounded bg-gradient-to-br from-[#E6F0FF] via-[#DDEBFF] to-[#CFE3FF] border-[#E5EDFF]">
+              <div key={modelId} className="relative border p-4 rounded bg-gradient-to-br from-[#E6F0FF] via-[#DDEBFF] to-[#CFE3FF] border-[#E5EDFF]">
                 <span className="absolute inset-x-0 top-0 h-1 rounded-t-lg bg-[#FDBA74]"></span>
                 <h3 className="text-lg font-semibold text-[#1E3A8A]">{model.name}</h3>
                 <p className="text-[#64748B] capitalize">{model.type}</p>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs text-[#334155] mb-1">Factor</label>
+                    <input
+                      type="number"
+                      className="w-full p-2 border border-[#C7DAFF] rounded bg-white text-[#1F3B73]"
+                      value={Number(model.factor ?? 0)}
+                      readOnly
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#334155] mb-1">Start RPM</label>
+                    <input
+                      type="number"
+                      className="w-full p-2 border border-[#C7DAFF] rounded bg-white text-[#1F3B73]"
+                      value={Number(model.startRpmNumber ?? 0)}
+                      readOnly
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-[#334155] mb-1">End RPM</label>
+                    <input
+                      type="number"
+                      className="w-full p-2 border border-[#C7DAFF] rounded bg-white text-[#1F3B73]"
+                      value={Number(model.endRpmNumber ?? 0)}
+                      readOnly
+                    />
+                  </div>
+                </div>
                 <div className="mt-4">
                   <h4 className="text-[#1E3A8A] font-medium mb-2">Points ({model.points?.length || 0}):</h4>
                   <div className="space-y-2">
@@ -269,7 +481,7 @@ const AllModels = () => {
                     ))}
                     {hasMorePoints && (
                       <button
-                        onClick={() => toggleExpanded(model._id)}
+                        onClick={() => toggleExpanded(modelId)}
                         className="text-[#1E40AF] text-sm hover:text-[#1E3A8A] font-medium"
                       >
                         {isExpanded ? 'See less' : `See more (${model.points.length - 2} more)`}
@@ -285,7 +497,7 @@ const AllModels = () => {
                     Edit
                   </button>
                   <button
-                    onClick={() => handleDelete(model._id)}
+                    onClick={() => openDeleteConfirm(model)}
                     className="bg-rose-50 text-rose-600 px-3 py-1 rounded text-sm hover:bg-rose-100"
                   >
                     Delete
@@ -300,6 +512,47 @@ const AllModels = () => {
           </div>
         )}
       </div>
+
+      <div className="mt-6 flex items-center justify-center gap-2">
+        <button
+          className="px-3 py-1 rounded bg-[#E5EDFF] text-[#1E3A8A] disabled:opacity-50"
+          disabled={pageClamped <= 1}
+          onClick={() => setPage(p => Math.max(1, p - 1))}
+        >
+          Prev
+        </button>
+        <span className="text-[#334155] text-sm">Page {pageClamped} of {totalPages}</span>
+        <button
+          className="px-3 py-1 rounded bg-[#E5EDFF] text-[#1E3A8A] disabled:opacity-50"
+          disabled={pageClamped >= totalPages}
+          onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+        >
+          Next
+        </button>
+      </div>
+
+      {confirmDelete.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-[#1E3A8A] mb-2">Confirm Delete</h3>
+            <p className="text-[#334155] mb-4">Are you sure you want to delete "{confirmDelete.name}"?</p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200"
+                onClick={closeDeleteConfirm}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded bg-rose-600 text-white hover:bg-rose-700"
+                onClick={confirmDeleteAction}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

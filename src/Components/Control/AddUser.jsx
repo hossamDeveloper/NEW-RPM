@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 const AddUser = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const queryClient = useQueryClient();
 
   const addUserMutation = useMutation({
@@ -114,16 +115,26 @@ const AddUser = () => {
 
         <div>
           <label htmlFor="password" className="block text-[#1F3B73] mb-2 font-medium">Password</label>
-          <input
-            type="password"
-            id="password"
-            name="password"
-            value={formik.values.password}
-            onChange={formik.handleChange}
-            onBlur={formik.handleBlur}
-            className="w-full px-4 py-2 rounded-lg bg-white border border-[#E5EDFF] text-[#1F3B73] placeholder-gray-400 focus:outline-none focus:border-[#1E40AF] focus:ring-2 focus:ring-[#1E40AF]/20"
-            placeholder="Enter password"
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              id="password"
+              name="password"
+              value={formik.values.password}
+              onChange={formik.handleChange}
+              onBlur={formik.handleBlur}
+              className="w-full px-4 py-2 pr-12 rounded-lg bg-white border border-[#E5EDFF] text-[#1F3B73] placeholder-gray-400 focus:outline-none focus:border-[#1E40AF] focus:ring-2 focus:ring-[#1E40AF]/20"
+              placeholder="Enter password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(s => !s)}
+              className="absolute inset-y-0 right-3 my-auto h-8 px-2 text-[#1F3B73] bg-transparent hover:text-[#1E3A8A]"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
           {formik.touched.password && formik.errors.password && (
             <div className="mt-1 text-red-600 text-sm">{formik.errors.password}</div>
           )}
