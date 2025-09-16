@@ -40,6 +40,7 @@ const FlowSearch = () => {
   const [notification, setNotification] = useState(null); // {type,message}
   const [apiResults, setApiResults] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [chartView, setChartView] = useState('power'); // 'power' | 'efficiency'
 
   // Dynamically import all axial images (handles spaces/parentheses)
   const axialImages = import.meta.glob('../assets/axial/*', { eager: true });
@@ -223,6 +224,40 @@ const FlowSearch = () => {
   const selected = apiResults[selectedIndex];
   const closestPoint = selected?.closestPoint;
 
+  // Try to detect the 1000-point series from API result
+  const findPointSeries = (obj) => {
+    if (!obj || typeof obj !== 'object') return [];
+    // Prefer common property names first
+    const candidateKeys = [
+      'points',
+      'generatedPoints',
+      'curvePoints',
+      'curve',
+      'dataPoints',
+      'allPoints',
+      'series',
+      'samples'
+    ];
+    for (const key of candidateKeys) {
+      const v = obj?.[key];
+      if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
+        const p = v[0];
+        if ('flowRate' in p && ('totalPressure' in p || 'brakePower' in p)) return v;
+      }
+    }
+    // Fallback: scan all object values to find an array of points
+    for (const key in obj) {
+      const v = obj[key];
+      if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
+        const p = v[0];
+        if ('flowRate' in p && ('totalPressure' in p || 'brakePower' in p)) return v;
+      }
+    }
+    return [];
+  };
+
+  const curvePoints = findPointSeries(selected);
+
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -249,17 +284,112 @@ const FlowSearch = () => {
     }
   };
 
-  const pressureChartData = closestPoint ? {
+  const efficiencyChartOptions = {
+    ...chartOptions,
+    plugins: {
+      ...chartOptions.plugins,
+      title: { ...chartOptions.plugins.title, text: 'Flow Rate vs Efficiency (m3/s / %)' },
+      tooltip: { ...chartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} m3/s`, `${ctx.dataset.label}: ${p.y?.toFixed?.(2)}%`]; } } }
+    },
+    scales: {
+      ...chartOptions.scales,
+      y: { ...chartOptions.scales.y, title: { ...chartOptions.scales.y.title, text: 'Efficiency (%)' }, min: 0, max: 100 }
+    }
+  };
+
+  // Build datasets for full curve + closest point overlay
+  const pressureChartData = (curvePoints && curvePoints.length > 0) ? {
+    datasets: [
+      {
+        label: 'Curve',
+        data: curvePoints.map(p => ({ x: parseFloat(p.flowRate), y: parseFloat(p.totalPressure) })),
+        backgroundColor: 'rgba(59,130,246,0.3)',
+        borderColor: 'rgb(59,130,246)',
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 3,
+        pointBackgroundColor: 'rgb(59,130,246)',
+        pointBorderColor: 'rgba(59,130,246,0.7)',
+        showLine: true,
+        tension: 0.35,
+      },
+      ...(closestPoint ? [{
+        label: 'Closest Point',
+        data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.totalPressure) }],
+        backgroundColor: 'rgb(251,146,60)',
+        borderColor: 'rgb(234,88,12)',
+        borderWidth: 3,
+        pointRadius: 6,
+        showLine: false,
+      }] : [])
+    ]
+  } : (closestPoint ? {
     datasets: [
       { label: 'Closest Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.totalPressure) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
     ]
-  } : null;
+  } : null);
 
-  const powerChartData = closestPoint ? {
+  const powerChartData = (curvePoints && curvePoints.length > 0) ? {
     datasets: [
-      { label: 'Brake Power', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.brakePower) }], backgroundColor: 'rgb(99,163,255)', borderColor: 'rgb(56,132,255)', borderWidth: 3, pointRadius: 8, showLine: false }
+      {
+        label: 'Brake Power Curve',
+        data: curvePoints.map(p => ({ x: parseFloat(p.flowRate), y: parseFloat(p.brakePower) })),
+        backgroundColor: 'rgba(99,163,255,0.3)',
+        borderColor: 'rgb(56,132,255)',
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 3,
+        pointBackgroundColor: 'rgb(56,132,255)',
+        pointBorderColor: 'rgba(56,132,255,0.7)',
+        showLine: true,
+        tension: 0.35,
+      },
+      ...(closestPoint ? [{
+        label: 'Closest Point',
+        data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.brakePower) }],
+        backgroundColor: 'rgb(251,146,60)',
+        borderColor: 'rgb(234,88,12)',
+        borderWidth: 3,
+        pointRadius: 6,
+        showLine: false,
+      }] : [])
     ]
-  } : null;
+  } : (closestPoint ? {
+    datasets: [
+      { label: 'Closest Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.brakePower) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
+    ]
+  } : null);
+
+  const efficiencyChartData = (curvePoints && curvePoints.length > 0) ? {
+    datasets: [
+      {
+        label: 'Efficiency Curve',
+        data: curvePoints.map(p => ({ x: parseFloat(p.flowRate), y: parseFloat(p.efficiency) })),
+        backgroundColor: 'rgba(16,185,129,0.25)',
+        borderColor: 'rgb(5,150,105)',
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 3,
+        pointBackgroundColor: 'rgb(5,150,105)',
+        pointBorderColor: 'rgba(5,150,105,0.7)',
+        showLine: true,
+        tension: 0.35,
+      },
+      ...(closestPoint ? [{
+        label: 'Closest Point',
+        data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.efficiency) }],
+        backgroundColor: 'rgb(251,146,60)',
+        borderColor: 'rgb(234,88,12)',
+        borderWidth: 3,
+        pointRadius: 6,
+        showLine: false,
+      }] : [])
+    ]
+  } : (closestPoint ? {
+    datasets: [
+      { label: 'Closest Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.efficiency) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
+    ]
+  } : null);
 
   return (
     <div className="min-h-screen bg-white">
@@ -388,10 +518,10 @@ const FlowSearch = () => {
                       <tbody className="divide-y divide-[#E5EDFF] text-[#334155]">
                         <tr><td className="py-2 px-4">Flow Rate</td><td className="py-2 px-4">{Number(closestPoint.flowRate).toFixed(6)} m3/s</td></tr>
                         <tr><td className="py-2 px-4">Total Pressure</td><td className="py-2 px-4">{Number(closestPoint.totalPressure).toFixed(6)} Pa</td></tr>
-                        <tr><td className="py-2 px-4">Velocity</td><td className="py-2 px-4">{Number(closestPoint.velocity).toFixed(6)}</td></tr>
-                        <tr><td className="py-2 px-4">Efficiency</td><td className="py-2 px-4">{Number(closestPoint.efficiency).toFixed(6)}%</td></tr>
-                        <tr><td className="py-2 px-4">Brake Power</td><td className="py-2 px-4">{Number(closestPoint.brakePower).toFixed(6)}</td></tr>
-                        <tr><td className="py-2 px-4">LPA</td><td className="py-2 px-4">{Number(closestPoint.lpa).toFixed(6)}</td></tr>
+                        <tr><td className="py-2 px-4">Velocity</td><td className="py-2 px-4">{Number(closestPoint.velocity).toFixed(6)} m/s</td></tr>
+                        <tr><td className="py-2 px-4">Efficiency</td><td className="py-2 px-4">{Number(closestPoint.efficiency).toFixed(6)} %</td></tr>
+                        <tr><td className="py-2 px-4">Brake Power</td><td className="py-2 px-4">{Number(closestPoint.brakePower).toFixed(6)} kw</td></tr>
+                        <tr><td className="py-2 px-4">LPA</td><td className="py-2 px-4">{Number(closestPoint.lpa).toFixed(6)} db</td></tr>
                         <tr><td className="py-2 px-4">Dynamic Pressure</td><td className="py-2 px-4">{Number(closestPoint.dynamicPressure).toFixed(6)} Pa</td></tr>
                         <tr><td className="py-2 px-4">Flow Rate Error</td><td className="py-2 px-4">{Number(closestPoint.flowRateError).toFixed(6)}</td></tr>
                         <tr><td className="py-2 px-4">Total Pressure Error</td><td className="py-2 px-4">{Number(closestPoint.totalPressureError).toFixed(6)}</td></tr>
@@ -415,9 +545,19 @@ const FlowSearch = () => {
                     </div>
                   </div>
                   <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                    <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Power Chart</h3>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-xl font-semibold text-[#1E3A8A]">{chartView === 'power' ? 'Power Chart' : 'Efficiency Chart'}</h3>
+                      <div className="inline-flex bg-[#F1F5FF] rounded-lg border border-[#E5EDFF] overflow-hidden">
+                        <button type="button" onClick={()=>setChartView('power')} className={`px-3 py-1 text-sm ${chartView==='power' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Power</button>
+                        <button type="button" onClick={()=>setChartView('efficiency')} className={`px-3 py-1 text-sm ${chartView==='efficiency' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Efficiency</button>
+                      </div>
+                    </div>
                     <div className="h-80">
-                      <Scatter data={powerChartData} options={powerChartOptions} />
+                      {chartView === 'power' ? (
+                        <Scatter data={powerChartData} options={powerChartOptions} />
+                      ) : (
+                        <Scatter data={efficiencyChartData} options={efficiencyChartOptions} />
+                      )}
                     </div>
                   </div>
                 </div>
