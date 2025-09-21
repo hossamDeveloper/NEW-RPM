@@ -17,7 +17,6 @@ import annotationPlugin from 'chartjs-plugin-annotation';
 import { useMutation } from '@tanstack/react-query';
 import api from '../redux/api';
 import logoImg from '../assets/logo.png';
-import { dimensionsData, getDimensionsData, getModelDimensions } from "../Data/dimensions.js";
 
 // Register ChartJS components
 ChartJS.register(
@@ -47,7 +46,6 @@ const FlowSearch = () => {
   const [chartView, setChartView] = useState('power'); // 'power' | 'efficiency'
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfCharts, setPdfCharts] = useState({ pressure: false, power: true, efficiency: false });
-  const [activeTab, setActiveTab] = useState('configuration'); // 'configuration' | 'dimensions'
 
   // Chart refs for exporting images
   const pressureChartRef = useRef(null);
@@ -409,98 +407,15 @@ const FlowSearch = () => {
     try {
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
       let y = 40;
-
-      // Helper function to load image and convert to base64
-      const loadImageAsBase64 = (imageSrc) => {
-        return new Promise((resolve, reject) => {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            ctx.drawImage(img, 0, 0);
-            const dataURL = canvas.toDataURL('image/png');
-            resolve(dataURL);
-          };
-          img.onerror = (error) => {
-            console.log('Image load error:', error, 'for path:', imageSrc);
-            reject(error);
-          };
-          // تحويل المسار ليعمل مع Vite
-          const correctedPath = imageSrc.startsWith('/src/') ? imageSrc : `/src${imageSrc}`;
-          img.src = correctedPath;
-        });
-      };
-
-      // Helper function to draw table
-      const drawTable = (data, columns, startX, startY, maxWidth) => {
-        const colCount = columns.length;
-        const colWidth = maxWidth / colCount;
-        const rowHeight = 20;
-        const headerHeight = 25;
-        
-        // Draw header
-        doc.setFillColor(248, 250, 255);
-        doc.rect(startX, startY, maxWidth, headerHeight, 'F');
-        doc.setDrawColor(229, 237, 255);
-        doc.setLineWidth(0.5);
-        doc.rect(startX, startY, maxWidth, headerHeight);
-        
-        // Header text
-        doc.setFontSize(10);
-        doc.setTextColor(71, 85, 105);
-        doc.setFont(undefined, 'bold');
-        columns.forEach((col, idx) => {
-          const x = startX + (idx * colWidth) + 5;
-          const y = startY + 16;
-          doc.text(col.label, x, y);
-        });
-        
-        // Draw data rows
-        data.forEach((row, rowIdx) => {
-          const rowY = startY + headerHeight + (rowIdx * rowHeight);
-          
-          // Highlight selected model row
-          if (row.model.includes(selected?.model?.name || '')) {
-            doc.setFillColor(239, 246, 255);
-            doc.rect(startX, rowY, maxWidth, rowHeight, 'F');
-          }
-          
-          // Draw row border
-          doc.setDrawColor(229, 237, 255);
-          doc.rect(startX, rowY, maxWidth, rowHeight);
-          
-          // Draw column separators
-          for (let i = 1; i < colCount; i++) {
-            const x = startX + (i * colWidth);
-            doc.line(x, rowY, x, rowY + rowHeight);
-          }
-          
-          // Row text
-          doc.setFontSize(9);
-          doc.setTextColor(51, 65, 85);
-          doc.setFont(undefined, 'normal');
-          columns.forEach((col, colIdx) => {
-            const x = startX + (colIdx * colWidth) + 5;
-            const y = rowY + 14;
-            doc.text(String(row[col.key] || ''), x, y);
-          });
-        });
-        
-        return startY + headerHeight + (data.length * rowHeight) + 10;
-      };
 
       // Header with logo and company details
       try {
-        const logoBase64 = await loadImageAsBase64(logoImg);
-        doc.addImage(logoBase64, 'PNG', 30, y, 150, 70);
-      } catch (error) {
-        console.log('Logo not loaded:', error);
-      }
+        const img = new Image();
+        img.src = logoImg;
+        // Place logo on left
+        doc.addImage(img, 'PNG', 30, y, 150, 70);
+      } catch (_) {}
 
       doc.setFontSize(11);
       doc.setTextColor('#0f172a');
@@ -519,6 +434,7 @@ const FlowSearch = () => {
       doc.setFontSize(16);
       doc.setTextColor('#1e3a8a');
       doc.text('Technical Submittal', pageWidth / 2, y, { align: 'center' });
+     
       y += 22;
 
       // Selected info
@@ -535,35 +451,32 @@ const FlowSearch = () => {
       ];
       const infoStartY = y;
       info.forEach((t) => { doc.text(t, 40, y); y += 16; });
-
-      // Add selected axial type image
+      // Place selected axial image on the right side of the info block
       try {
         const selAxial = axialTypes.find(t => t.code === axialType);
         if (selAxial?.img) {
-          const axialImageBase64 = await loadImageAsBase64(selAxial.img);
-          
           const img = new Image();
-          img.src = axialImageBase64;
-          await new Promise((resolve) => {
+          img.crossOrigin = 'anonymous';
+          img.src = selAxial.img;
+          // Wait for image to load to get natural sizes
+          await new Promise((resolve, reject) => {
             img.onload = resolve;
+            img.onerror = reject;
           });
-          
           const naturalW = img.naturalWidth || 200;
           const naturalH = img.naturalHeight || 140;
+          // Object-contain within max box
           const maxW = 220;
           const maxH = 160;
           const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
           const imgW = Math.max(1, Math.round(naturalW * scale));
           const imgH = Math.max(1, Math.round(naturalH * scale));
           const imgX = pageWidth - 40 - imgW;
-          const imgY = infoStartY - 4;
-          
-          doc.addImage(axialImageBase64, 'PNG', imgX, imgY, imgW, imgH);
+          const imgY = infoStartY - 4; // slightly aligned with info title
+          doc.addImage(img, 'PNG', imgX, imgY, imgW, imgH);
           y = Math.max(y, imgY + imgH + 8);
         }
-      } catch (error) {
-        console.log('Axial type image not loaded:', error);
-      }
+      } catch (_) {}
       y += 8;
 
       // Working Point
@@ -589,230 +502,25 @@ const FlowSearch = () => {
         const rightRows = wpRows.slice(rowsPerCol);
         const rowHeight = 24;
         const cellPadding = 8;
-        
         const drawCol = (x, startY, rows) => {
           doc.setDrawColor(229, 237, 255);
           doc.setLineWidth(0.5);
           rows.forEach((row, idx) => {
             const rowTop = startY + idx * rowHeight;
-            const textY = rowTop + 16;
+            const textY = rowTop + 16; // vertical padding from top border
+            // cell box
             doc.rect(x, rowTop, colWidth, rowHeight);
+            // text: label and value
             doc.setFont(undefined, 'bold');
             doc.text(`${row[0]}:`, x + cellPadding, textY);
             doc.setFont(undefined, 'normal');
             doc.text(String(row[1]), x + cellPadding + 110, textY);
           });
         };
-        
         const tableTop = y + 8;
-        drawCol(marginX, tableTop, leftRows);
-        drawCol(marginX + colWidth + gap, tableTop, rightRows);
+        drawCol(marginX, tableTop, leftRows );
+        drawCol(marginX + colWidth + gap, tableTop, rightRows );
         y = tableTop + rowsPerCol * rowHeight + 22;
-      }
-
-      // Add dimensions section
-      try {
-        const dimensionsData = getDimensionsData(axialType, selected?.model?.name);
-        if (dimensionsData) {
-          // Check if we need a new page
-          if (y + 300 > pageHeight - 40) {
-            doc.addPage();
-            y = 40;
-          }
-          
-          // Dimensions title
-          doc.setFontSize(13);
-          doc.setTextColor('#1e3a8a');
-          doc.text('Dimensions', 40, y);
-          y += 20;
-          
-          // Special handling for NEID with variants
-          if (axialType === 'NEID' && dimensionsData.variants) {
-            for (const [variantIndex, variant] of dimensionsData.variants.entries()) {
-              // Check if we need a new page for each variant
-              if (y + 250 > pageHeight - 40) {
-                doc.addPage();
-                y = 40;
-              }
-              
-              // Variant title
-              doc.setFontSize(12);
-              doc.setTextColor('#1e3a8a');
-              doc.text(variant.name, 40, y);
-              y += 15;
-              
-              const leftColumnX = 40;
-              const rightColumnX = pageWidth / 2 + 20;
-              const columnWidth = (pageWidth - 100) / 2;
-              const startY = y;
-              
-              // Left column: Dimensions data
-              const selectedModelData = variant.data.find(row => 
-                row.model.includes(selected?.model?.name || '')
-              );
-              
-              if (selectedModelData) {
-                doc.setFontSize(10);
-                doc.setTextColor('#1e3a8a');
-                doc.text('Dimensions Data', leftColumnX, y);
-                y += 12;
-                
-                const rowHeight = 14;
-                const labelWidth = 60;
-                
-                dimensionsData.columns.forEach((col, idx) => {
-                  if (col.key === 'model') return; // Skip model column
-                  
-                  const rowY = y + (idx * rowHeight);
-                  
-                  // Draw background for each row
-                  doc.setFillColor(248, 250, 255);
-                  doc.rect(leftColumnX, rowY, columnWidth, rowHeight, 'F');
-                  
-                  // Draw border
-                  doc.setDrawColor(229, 237, 255);
-                  doc.setLineWidth(0.5);
-                  doc.rect(leftColumnX, rowY, columnWidth, rowHeight);
-                  
-                  // Label (bold)
-                  doc.setFontSize(8);
-                  doc.setTextColor(71, 85, 105);
-                  doc.setFont(undefined, 'bold');
-                  doc.text(`${col.label}:`, leftColumnX + 3, rowY + 9);
-                  
-                  // Value
-                  doc.setFontSize(8);
-                  doc.setTextColor(51, 65, 85);
-                  doc.setFont(undefined, 'normal');
-                  doc.text(String(selectedModelData[col.key] || ''), leftColumnX + labelWidth, rowY + 9);
-                });
-                
-                y += (dimensionsData.columns.length - 1) * rowHeight + 15;
-              }
-              
-              // Right column: Variant image
-              if (variant.image) {
-                try {
-                  console.log('Loading variant image:', variant.image);
-                  const variantImageBase64 = await loadImageAsBase64(variant.image);
-                  
-                  const img = new Image();
-                  img.src = variantImageBase64;
-                  await new Promise((resolve, reject) => {
-                    img.onload = resolve;
-                    img.onerror = reject;
-                  });
-                  
-                  const naturalW = img.naturalWidth || 400;
-                  const naturalH = img.naturalHeight || 300;
-                  
-                  // Scale to fit right column
-                  const maxWidth = columnWidth;
-                  const maxHeight = 180;
-                  const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
-                  const imgW = Math.max(1, Math.round(naturalW * scale));
-                  const imgH = Math.max(1, Math.round(naturalH * scale));
-                  
-                  // Center image vertically in right column
-                  const imageY = startY + 10;
-                  
-                  doc.addImage(variantImageBase64, 'PNG', rightColumnX, imageY, imgW, imgH);
-                  
-                  // Update y position to the bottom of the tallest column
-                  y = Math.max(y, imageY + imgH + 20);
-                } catch (error) {
-                  console.log(`Variant image ${variant.name} not loaded:`, error);
-                  // إضافة نص بديل عند فشل تحميل الصورة
-                  doc.setFontSize(10);
-                  doc.setTextColor('#64748B');
-                  doc.text(`Image not available for ${variant.name}`, rightColumnX, startY + 20);
-                }
-              }
-              
-              y += 20; // Space between variants
-            }
-          } else {
-            // Regular handling for other types
-            const leftColumnX = 40;
-            const rightColumnX = pageWidth / 2 + 20;
-            const columnWidth = (pageWidth - 100) / 2;
-            const startY = y;
-            
-            // Left column: Dimensions data table
-            if (dimensionsData.data && dimensionsData.data.length > 0) {
-              doc.setFontSize(11);
-              doc.setTextColor('#1e3a8a');
-              doc.text('Dimensions Data', leftColumnX, y);
-              y += 15;
-              
-              const selectedModelData = dimensionsData.data.find(row => 
-                row.model.includes(selected?.model?.name || '')
-              );
-              
-              if (selectedModelData) {
-                // Draw vertical list format
-                const rowHeight = 16;
-                const labelWidth = 80;
-                
-                dimensionsData.columns.forEach((col, idx) => {
-                  if (col.key === 'model') return;
-                  
-                  const rowY = y + (idx * rowHeight);
-                  
-                  doc.setFillColor(248, 250, 255);
-                  doc.rect(leftColumnX, rowY, columnWidth, rowHeight, 'F');
-                  
-                  doc.setDrawColor(229, 237, 255);
-                  doc.setLineWidth(0.5);
-                  doc.rect(leftColumnX, rowY, columnWidth, rowHeight);
-                  
-                  doc.setFontSize(9);
-                  doc.setTextColor(71, 85, 105);
-                  doc.setFont(undefined, 'bold');
-                  doc.text(`${col.label}:`, leftColumnX + 5, rowY + 11);
-                  
-                  doc.setFontSize(9);
-                  doc.setTextColor(51, 65, 85);
-                  doc.setFont(undefined, 'normal');
-                  doc.text(String(selectedModelData[col.key] || ''), leftColumnX + labelWidth, rowY + 11);
-                });
-                
-                y += (dimensionsData.columns.length - 1) * rowHeight + 20;
-              }
-            }
-            
-            // Right column: Dimensions image
-            if (dimensionsData.image) {
-              try {
-                const dimensionsImageBase64 = await loadImageAsBase64(dimensionsData.image);
-                
-                const img = new Image();
-                img.src = dimensionsImageBase64;
-                await new Promise((resolve) => {
-                  img.onload = resolve;
-                });
-                
-                const naturalW = img.naturalWidth || 400;
-                const naturalH = img.naturalHeight || 300;
-                const maxWidth = columnWidth;
-                const maxHeight = 200;
-                const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
-                const imgW = Math.max(1, Math.round(naturalW * scale));
-                const imgH = Math.max(1, Math.round(naturalH * scale));
-                
-                const imageY = startY + 20;
-                
-                doc.addImage(dimensionsImageBase64, 'PNG', rightColumnX, imageY, imgW, imgH);
-                
-                y = Math.max(y, imageY + imgH + 20);
-              } catch (error) {
-                console.log('Dimensions image not loaded:', error);
-              }
-            }
-          }
-        }
-      } catch (error) {
-        console.log('Dimensions section not loaded:', error);
       }
 
       // Charts
@@ -832,9 +540,7 @@ const FlowSearch = () => {
             doc.addImage(imgData, 'PNG', 40, y, pageWidth - 80, 220);
             y += 236;
           }
-        } catch (error) {
-          console.log(`Chart ${title} not loaded:`, error);
-        }
+        } catch (_) {}
       };
 
       if (pdfCharts.pressure) addChart('Pressure Chart', pressureChartRef);
@@ -843,15 +549,9 @@ const FlowSearch = () => {
 
       doc.save(`technical-submittal-${selectedModel || 'selection'}.pdf`);
       setShowPdfModal(false);
-    } catch (error) {
-      console.error('PDF generation error:', error);
+    } catch (_) {
       setShowPdfModal(false);
     }
-  };
-
-  const getCurrentDimensionsData = () => {
-    if (!axialType || !selected?.model?.name) return null;
-    return getDimensionsData(axialType, selected.model.name);
   };
 
 
@@ -983,49 +683,21 @@ const FlowSearch = () => {
             </div>
 
             {closestPoint && (
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                {/* Tab Navigation */}
-                <div className="flex border-b border-[#E5EDFF] mb-6">
-                  <button
-                    onClick={() => setActiveTab('configuration')}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                      activeTab === 'configuration'
-                        ? 'border-[#1E3A8A] text-[#1E3A8A]'
-                        : 'border-transparent text-[#64748B] hover:text-[#1E3A8A]'
-                    }`}
-                  >
-                    Configuration
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('dimensions')}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                      activeTab === 'dimensions'
-                        ? 'border-[#1E3A8A] text-[#1E3A8A]'
-                        : 'border-transparent text-[#64748B] hover:text-[#1E3A8A]'
-                    }`}
-                  >
-                    Dimensions
-                  </button>
-                </div>
-
-                {/* Tab Content */}
-                {activeTab === 'configuration' && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Working Point Table */}
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                      <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Working Point</h3>
+                  <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Working Point</h3>
                   <div className="overflow-x-auto">
                     <table className="min-w-full bg-white rounded-xl border border-[#E5EDFF]">
                       <tbody className="divide-y divide-[#E5EDFF] text-[#334155]">
-                          <tr><td className="py-2 px-4">RPM</td><td className="py-2 px-4">{selected?.rpm?.rpm}</td></tr>
+                      <tr><td className="py-2 px-4">RPM</td><td className="py-2 px-4">{selected?.rpm?.rpm}</td></tr>
 
                         <tr><td className="py-2 px-4">Flow Rate</td><td className="py-2 px-4">{Number(closestPoint.flowRate).toFixed(6)} m3/s</td></tr>
                         <tr><td className="py-2 px-4">Total Pressure</td><td className="py-2 px-4">{Number(closestPoint.totalPressure).toFixed(6)} Pa</td></tr>
-                            <tr><td className="py-2 px-4">Velocity</td><td className="py-2 px-4">{Number(closestPoint.velocity).toFixed(6)} m/s</td></tr>
-                            <tr><td className="py-2 px-4">Efficiency</td><td className="py-2 px-4">{Number(closestPoint.efficiency).toFixed(6)} %</td></tr>
-                            <tr><td className="py-2 px-4">Brake Power</td><td className="py-2 px-4">{Number(closestPoint.brakePower).toFixed(6)} kw</td></tr>
-                            <tr><td className="py-2 px-4">Installed</td><td className="py-2 px-4">{(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw</td></tr>
-                            <tr><td className="py-2 px-4">LPA</td><td className="py-2 px-4">{Number(closestPoint.lpa).toFixed(6)} db</td></tr>
+                        <tr><td className="py-2 px-4">Velocity</td><td className="py-2 px-4">{Number(closestPoint.velocity).toFixed(6)} m/s</td></tr>
+                        <tr><td className="py-2 px-4">Efficiency</td><td className="py-2 px-4">{Number(closestPoint.efficiency).toFixed(6)} %</td></tr>
+                        <tr><td className="py-2 px-4">Brake Power</td><td className="py-2 px-4">{Number(closestPoint.brakePower).toFixed(6)} kw</td></tr>
+                        <tr><td className="py-2 px-4">Installed</td><td className="py-2 px-4">{(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw</td></tr>
+                        <tr><td className="py-2 px-4">LPA</td><td className="py-2 px-4">{Number(closestPoint.lpa).toFixed(6)} db</td></tr>
                         <tr><td className="py-2 px-4">Dynamic Pressure</td><td className="py-2 px-4">{Number(closestPoint.dynamicPressure).toFixed(6)} Pa</td></tr>
                         <tr><td className="py-2 px-4">Flow Rate Error</td><td className="py-2 px-4">{Number(closestPoint.flowRateError).toFixed(6)}</td></tr>
                         <tr><td className="py-2 px-4">Total Pressure Error</td><td className="py-2 px-4">{Number(closestPoint.totalPressureError).toFixed(6)}</td></tr>
@@ -1033,203 +705,41 @@ const FlowSearch = () => {
                       </tbody>
                     </table>
                   </div>
-                  
+              
                 </div>
 
                 <div className="grid grid-cols-1 gap-8">
-                      {/* Pressure Chart */}
                   <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
                     <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Pressure Chart</h3>
                     <div className="h-80">
-                          <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
-                        </div>
-                      </div>
-                      
-                      {/* Power/Efficiency Chart */}
-                      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-xl font-semibold text-[#1E3A8A]">{chartView === 'power' ? 'Power Chart' : 'Efficiency Chart'}</h3>
-                          <div className="inline-flex bg-[#F1F5FF] rounded-lg border border-[#E5EDFF] overflow-hidden">
-                            <button type="button" onClick={()=>setChartView('power')} className={`px-3 py-1 text-sm ${chartView==='power' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Power</button>
-                            <button type="button" onClick={()=>setChartView('efficiency')} className={`px-3 py-1 text-sm ${chartView==='efficiency' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Efficiency</button>
-                          </div>
-                        </div>
-                        <div className="h-80">
-                          {chartView === 'power' ? (
-                            <Scatter ref={powerChartRef} data={powerChartData} options={powerChartOptions} />
-                          ) : (
-                            <Scatter ref={efficiencyChartRef} data={efficiencyChartData} options={efficiencyChartOptions} />
-                          )}
-                          {/* Hidden counterpart to ensure refs are available for export */}
-                          <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
-                            {chartView === 'power' ? (
-                              <Scatter ref={efficiencyChartRef} data={efficiencyChartData || { datasets: [] }} options={efficiencyChartOptions} />
-                            ) : (
-                              <Scatter ref={powerChartRef} data={powerChartData || { datasets: [] }} options={powerChartOptions} />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'dimensions' && (
-                  <div className="space-y-6">
-                    {(() => {
-                      const dimensionsData = getCurrentDimensionsData();
-                      if (!dimensionsData) {
-                        return (
-                          <div className="text-center py-12">
-                            <div className="text-[#64748B] text-lg mb-4">Model Dimensions</div>
-                            <div className="text-[#9CA3AF] text-sm">Select a model to view dimensions</div>
-                          </div>
-                        );
-                      }
-
-                      // Special handling for NEID with variants
-                      if (axialType === 'NEID' && dimensionsData.variants) {
-                        return (
-                          <div className="space-y-6">
-                            {dimensionsData.variants.map((variant, variantIndex) => {
-                              const selectedModelData = variant.data.find(row => 
-                                row.model.includes(selected?.model?.name || '')
-                              );
-                              
-                              return (
-                                <div key={variantIndex} className="space-y-4">
-                                  {/* Variant Title and Content */}
-                                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                                    <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">{variant.name}</h3>
-                                    
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                      {/* Image */}
-                                      {variant.image && (
-                                        <div className="flex justify-center">
-                                          <img 
-                                            src={variant.image} 
-                                            alt={variant.name}
-                                            className="max-w-full h-auto max-h-96 object-contain"
-                                            onError={(e) => {
-                                              e.target.style.display = 'none';
-                                              e.target.nextSibling.style.display = 'block';
-                                            }}
-                                          />
-                                          <div style={{display: 'none'}} className="text-[#9CA3AF] text-sm">
-                                            Image not available
-                                          </div>
-                                        </div>
-                                      )}
-                                      
-                                      {/* Dimensions Data */}
-                                      {selectedModelData ? (
-                                        <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#E5EDFF]">
-                                          <h4 className="text-lg font-semibold text-[#1E3A8A] mb-3">
-                                            Dimensions Data - {selectedModelData.model}
-                                          </h4>
-                                          <div className="space-y-2">
-                                            {dimensionsData.columns.map((col, colIdx) => (
-                                              <div key={colIdx} className="flex justify-between py-1 border-b border-[#E5EDFF] last:border-b-0">
-                                                <span className="font-medium text-[#475569]">{col.label}:</span>
-                                                <span className="text-[#334155]">{selectedModelData[col.key]}</span>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <div className="text-center py-8">
-                                          <div className="text-[#64748B] text-sm">No dimensions data found for this variant</div>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      }
-
-                      // Regular handling for other types
-                      const selectedModelData = dimensionsData.data.find(row => 
-                        row.model.includes(selected?.model?.name || '')
-                      );
-
-                      return (
-                        <div className="space-y-6">
-                          {/* Model Image */}
-                          {dimensionsData.image && (
-                            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                              <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">{dimensionsData.name}</h3>
-                              <div className="flex justify-center">
-                                <img 
-                                  src={dimensionsData.image} 
-                                  alt={dimensionsData.name}
-                                  className="max-w-full h-auto max-h-96 object-contain"
-                                  onError={(e) => {
-                                    e.target.style.display = 'none';
-                                    e.target.nextSibling.style.display = 'block';
-                                  }}
-                                />
-                                <div style={{display: 'none'}} className="text-[#9CA3AF] text-sm">
-                                  Image not available
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Dimensions Table */}
-                          {selectedModelData ? (
-                            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                              <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">
-                                Dimensions Data - {selectedModelData.model}
-                              </h3>
-                              <div className="overflow-x-auto">
-                                <table className="min-w-full bg-white rounded-xl border border-[#E5EDFF]">
-                                  <thead className="bg-[#F8FAFF]">
-                                    <tr className="text-left text-[#475569] border-b border-[#E5EDFF]">
-                                      {dimensionsData.columns.map((col, idx) => (
-                                        <th key={idx} className="py-3 px-4 font-semibold">{col.label}</th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-[#E5EDFF] text-[#334155]">
-                                    <tr className="bg-blue-50">
-                                      {dimensionsData.columns.map((col, colIdx) => (
-                                        <td key={colIdx} className="py-3 px-4 font-medium">
-                                          {selectedModelData[col.key]}
-                                        </td>
-                                      ))}
-                                    </tr>
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                              <div className="text-center py-8">
-                                <div className="text-[#64748B] text-lg mb-2">No dimensions data found</div>
-                                <div className="text-[#9CA3AF] text-sm">Dimensions data not available for the selected model</div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                    
-                    {/* Hidden Charts for PDF Export - Always render these charts but hide them */}
-                    <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
-                      {/* Pressure Chart */}
                       <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
-                      
-                      {/* Power Chart */}
-                      <Scatter ref={powerChartRef} data={powerChartData} options={powerChartOptions} />
-                      
-                      {/* Efficiency Chart */}
-                      <Scatter ref={efficiencyChartRef} data={efficiencyChartData} options={efficiencyChartOptions} />
                     </div>
                   </div>
-                )}
+                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-xl font-semibold text-[#1E3A8A]">{chartView === 'power' ? 'Power Chart' : 'Efficiency Chart'}</h3>
+                      <div className="inline-flex bg-[#F1F5FF] rounded-lg border border-[#E5EDFF] overflow-hidden">
+                        <button type="button" onClick={()=>setChartView('power')} className={`px-3 py-1 text-sm ${chartView==='power' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Power</button>
+                        <button type="button" onClick={()=>setChartView('efficiency')} className={`px-3 py-1 text-sm ${chartView==='efficiency' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Efficiency</button>
+                      </div>
+                    </div>
+                    <div className="h-80">
+                      {chartView === 'power' ? (
+                        <Scatter ref={powerChartRef} data={powerChartData} options={powerChartOptions} />
+                      ) : (
+                        <Scatter ref={efficiencyChartRef} data={efficiencyChartData} options={efficiencyChartOptions} />
+                      )}
+                      {/* Hidden counterpart to ensure refs are available for export */}
+                      <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
+                        {chartView === 'power' ? (
+                          <Scatter ref={efficiencyChartRef} data={efficiencyChartData || { datasets: [] }} options={efficiencyChartOptions} />
+                        ) : (
+                          <Scatter ref={powerChartRef} data={powerChartData || { datasets: [] }} options={powerChartOptions} />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </motion.div>

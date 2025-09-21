@@ -18,6 +18,7 @@
     "chartjs-plugin-annotation": "^3.1.0",
     "formik": "^2.4.6",
     "framer-motion": "^12.11.3",
+    "jspdf": "^2.5.2",
     "postcss": "^8.5.3",
     "react": "^19.1.0",
     "react-chartjs-2": "^5.3.0",

@@ -37,7 +37,7 @@ const Navbar = () => {
     [
       { path: '/', label: 'Home' },
       ...(userRole === 'admin' ? [{ path: '/flow-calculate', label: 'Flow Calculate' }] : []),
-      { path: '/flow-search', label: 'Flow Search' },
+      { path: '/flow-search', label: 'Selector' },
       ...(userRole === 'admin' ? [{ path: '/control', label: 'Control' }] : [])
     ]
   ), [userRole]);

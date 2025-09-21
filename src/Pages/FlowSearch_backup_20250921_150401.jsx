@@ -426,13 +426,8 @@ const FlowSearch = () => {
             const dataURL = canvas.toDataURL('image/png');
             resolve(dataURL);
           };
-          img.onerror = (error) => {
-            console.log('Image load error:', error, 'for path:', imageSrc);
-            reject(error);
-          };
-          // تحويل المسار ليعمل مع Vite
-          const correctedPath = imageSrc.startsWith('/src/') ? imageSrc : `/src${imageSrc}`;
-          img.src = correctedPath;
+          img.onerror = reject;
+          img.src = imageSrc;
         });
       };
 
@@ -626,188 +621,90 @@ const FlowSearch = () => {
           doc.text('Dimensions', 40, y);
           y += 20;
           
-          // Special handling for NEID with variants
-          if (axialType === 'NEID' && dimensionsData.variants) {
-            for (const [variantIndex, variant] of dimensionsData.variants.entries()) {
-              // Check if we need a new page for each variant
-              if (y + 250 > pageHeight - 40) {
-                doc.addPage();
-                y = 40;
-              }
-              
-              // Variant title
-              doc.setFontSize(12);
-              doc.setTextColor('#1e3a8a');
-              doc.text(variant.name, 40, y);
-              y += 15;
-              
-              const leftColumnX = 40;
-              const rightColumnX = pageWidth / 2 + 20;
-              const columnWidth = (pageWidth - 100) / 2;
-              const startY = y;
-              
-              // Left column: Dimensions data
-              const selectedModelData = variant.data.find(row => 
-                row.model.includes(selected?.model?.name || '')
-              );
-              
-              if (selectedModelData) {
-                doc.setFontSize(10);
-                doc.setTextColor('#1e3a8a');
-                doc.text('Dimensions Data', leftColumnX, y);
-                y += 12;
-                
-                const rowHeight = 14;
-                const labelWidth = 60;
-                
-                dimensionsData.columns.forEach((col, idx) => {
-                  if (col.key === 'model') return; // Skip model column
-                  
-                  const rowY = y + (idx * rowHeight);
-                  
-                  // Draw background for each row
-                  doc.setFillColor(248, 250, 255);
-                  doc.rect(leftColumnX, rowY, columnWidth, rowHeight, 'F');
-                  
-                  // Draw border
-                  doc.setDrawColor(229, 237, 255);
-                  doc.setLineWidth(0.5);
-                  doc.rect(leftColumnX, rowY, columnWidth, rowHeight);
-                  
-                  // Label (bold)
-                  doc.setFontSize(8);
-                  doc.setTextColor(71, 85, 105);
-                  doc.setFont(undefined, 'bold');
-                  doc.text(`${col.label}:`, leftColumnX + 3, rowY + 9);
-                  
-                  // Value
-                  doc.setFontSize(8);
-                  doc.setTextColor(51, 65, 85);
-                  doc.setFont(undefined, 'normal');
-                  doc.text(String(selectedModelData[col.key] || ''), leftColumnX + labelWidth, rowY + 9);
-                });
-                
-                y += (dimensionsData.columns.length - 1) * rowHeight + 15;
-              }
-              
-              // Right column: Variant image
-              if (variant.image) {
-                try {
-                  console.log('Loading variant image:', variant.image);
-                  const variantImageBase64 = await loadImageAsBase64(variant.image);
-                  
-                  const img = new Image();
-                  img.src = variantImageBase64;
-                  await new Promise((resolve, reject) => {
-                    img.onload = resolve;
-                    img.onerror = reject;
-                  });
-                  
-                  const naturalW = img.naturalWidth || 400;
-                  const naturalH = img.naturalHeight || 300;
-                  
-                  // Scale to fit right column
-                  const maxWidth = columnWidth;
-                  const maxHeight = 180;
-                  const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
-                  const imgW = Math.max(1, Math.round(naturalW * scale));
-                  const imgH = Math.max(1, Math.round(naturalH * scale));
-                  
-                  // Center image vertically in right column
-                  const imageY = startY + 10;
-                  
-                  doc.addImage(variantImageBase64, 'PNG', rightColumnX, imageY, imgW, imgH);
-                  
-                  // Update y position to the bottom of the tallest column
-                  y = Math.max(y, imageY + imgH + 20);
-                } catch (error) {
-                  console.log(`Variant image ${variant.name} not loaded:`, error);
-                  // إضافة نص بديل عند فشل تحميل الصورة
-                  doc.setFontSize(10);
-                  doc.setTextColor('#64748B');
-                  doc.text(`Image not available for ${variant.name}`, rightColumnX, startY + 20);
-                }
-              }
-              
-              y += 20; // Space between variants
-            }
-          } else {
-            // Regular handling for other types
-            const leftColumnX = 40;
-            const rightColumnX = pageWidth / 2 + 20;
-            const columnWidth = (pageWidth - 100) / 2;
-            const startY = y;
+          const leftColumnX = 40;
+          const rightColumnX = pageWidth / 2 + 20;
+          const columnWidth = (pageWidth - 100) / 2;
+          const startY = y;
+          
+          // Left column: Dimensions data table
+          if (dimensionsData.data && dimensionsData.data.length > 0) {
+            doc.setFontSize(11);
+            doc.setTextColor('#1e3a8a');
+            doc.text('Dimensions Data', leftColumnX, y);
+            y += 15;
             
-            // Left column: Dimensions data table
-            if (dimensionsData.data && dimensionsData.data.length > 0) {
-              doc.setFontSize(11);
-              doc.setTextColor('#1e3a8a');
-              doc.text('Dimensions Data', leftColumnX, y);
-              y += 15;
-              
-              const selectedModelData = dimensionsData.data.find(row => 
-                row.model.includes(selected?.model?.name || '')
-              );
-              
-              if (selectedModelData) {
-                // Draw vertical list format
-                const rowHeight = 16;
-                const labelWidth = 80;
-                
-                dimensionsData.columns.forEach((col, idx) => {
-                  if (col.key === 'model') return;
-                  
-                  const rowY = y + (idx * rowHeight);
-                  
-                  doc.setFillColor(248, 250, 255);
-                  doc.rect(leftColumnX, rowY, columnWidth, rowHeight, 'F');
-                  
-                  doc.setDrawColor(229, 237, 255);
-                  doc.setLineWidth(0.5);
-                  doc.rect(leftColumnX, rowY, columnWidth, rowHeight);
-                  
-                  doc.setFontSize(9);
-                  doc.setTextColor(71, 85, 105);
-                  doc.setFont(undefined, 'bold');
-                  doc.text(`${col.label}:`, leftColumnX + 5, rowY + 11);
-                  
-                  doc.setFontSize(9);
-                  doc.setTextColor(51, 65, 85);
-                  doc.setFont(undefined, 'normal');
-                  doc.text(String(selectedModelData[col.key] || ''), leftColumnX + labelWidth, rowY + 11);
-                });
-                
-                y += (dimensionsData.columns.length - 1) * rowHeight + 20;
-              }
-            }
+            // Get only the selected model data
+            const selectedModelData = dimensionsData.data.find(row => 
+              row.model.includes(selected?.model?.name || '')
+            );
             
-            // Right column: Dimensions image
-            if (dimensionsData.image) {
-              try {
-                const dimensionsImageBase64 = await loadImageAsBase64(dimensionsData.image);
+            if (selectedModelData) {
+              // Draw vertical list format
+              const rowHeight = 25;
+              const labelWidth = 120;
+              const valueWidth = 60;
+              
+              dimensionsData.columns.forEach((col, idx) => {
+                if (col.key === 'model') return; // Skip model column as it's in the title
                 
-                const img = new Image();
-                img.src = dimensionsImageBase64;
-                await new Promise((resolve) => {
-                  img.onload = resolve;
-                });
+                const rowY = y + (idx * rowHeight);
                 
-                const naturalW = img.naturalWidth || 400;
-                const naturalH = img.naturalHeight || 300;
-                const maxWidth = columnWidth;
-                const maxHeight = 200;
-                const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
-                const imgW = Math.max(1, Math.round(naturalW * scale));
-                const imgH = Math.max(1, Math.round(naturalH * scale));
+                // Draw background for each row
+                doc.setFillColor(248, 250, 255);
+                doc.rect(leftColumnX, rowY, columnWidth, rowHeight, 'F');
                 
-                const imageY = startY + 20;
+                // Draw border
+                doc.setDrawColor(229, 237, 255);
+                doc.setLineWidth(0.5);
+                doc.rect(leftColumnX, rowY, columnWidth, rowHeight);
                 
-                doc.addImage(dimensionsImageBase64, 'PNG', rightColumnX, imageY, imgW, imgH);
+                // Label (bold)
+                doc.setFontSize(9);
+                doc.setTextColor(71, 85, 105);
+                doc.setFont(undefined, 'bold');
+                doc.text(`${col.label}:`, leftColumnX + 5, rowY + 11);
                 
-                y = Math.max(y, imageY + imgH + 20);
-              } catch (error) {
-                console.log('Dimensions image not loaded:', error);
-              }
+                // Value
+                doc.setFontSize(9);
+                doc.setTextColor(51, 65, 85);
+                doc.setFont(undefined, 'normal');
+                doc.text(String(selectedModelData[col.key] || ''), leftColumnX + labelWidth, rowY + 11);
+              });
+              
+              y += (dimensionsData.columns.length - 1) * rowHeight + 20; // -1 to exclude model column
+            }
+          }
+          
+          // Right column: Dimensions image
+          if (dimensionsData.image) {
+            try {
+              const dimensionsImageBase64 = await loadImageAsBase64(dimensionsData.image);
+              
+              const img = new Image();
+              img.src = dimensionsImageBase64;
+              await new Promise((resolve) => {
+                img.onload = resolve;
+              });
+              
+              const naturalW = img.naturalWidth || 400;
+              const naturalH = img.naturalHeight || 300;
+              
+              // Scale to fit right column
+              const maxWidth = columnWidth;
+              const maxHeight = 200;
+              const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
+              const imgW = Math.max(1, Math.round(naturalW * scale));
+              const imgH = Math.max(1, Math.round(naturalH * scale));
+              
+              // Center image vertically in right column
+              const imageY = startY + 20;
+              
+              doc.addImage(dimensionsImageBase64, 'PNG', rightColumnX, imageY, imgW, imgH);
+              
+              // Update y position to the bottom of the tallest column
+              y = Math.max(y, imageY + imgH + 20);
+            } catch (error) {
+              console.log('Dimensions image not loaded:', error);
             }
           }
         }
@@ -1216,18 +1113,6 @@ const FlowSearch = () => {
                         </div>
                       );
                     })()}
-                    
-                    {/* Hidden Charts for PDF Export - Always render these charts but hide them */}
-                    <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
-                      {/* Pressure Chart */}
-                      <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
-                      
-                      {/* Power Chart */}
-                      <Scatter ref={powerChartRef} data={powerChartData} options={powerChartOptions} />
-                      
-                      {/* Efficiency Chart */}
-                      <Scatter ref={efficiencyChartRef} data={efficiencyChartData} options={efficiencyChartOptions} />
-                    </div>
                   </div>
                 )}
               </div>

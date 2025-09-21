@@ -15,6 +15,13 @@ const AllUsers = () => {
   });
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [modalError, setModalError] = useState('');
+  const [confirmModal, setConfirmModal] = useState({ open: false, action: null, userId: null, name: '' });
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyUser, setHistoryUser] = useState(null);
+  const [historyItems, setHistoryItems] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [expandedHistoryIndex, setExpandedHistoryIndex] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -78,14 +85,12 @@ const AllUsers = () => {
     setShowPasswords(prev => ({ ...prev, [userId]: !prev[userId] }));
   };
 
-  const handleBlock = (userId) => {
-    if (!window.confirm('Are you sure you want to block this user?')) return;
-    blockMutation.mutate(userId);
+  const handleBlock = (userId, name) => {
+    setConfirmModal({ open: true, action: 'block', userId, name: name || '' });
   };
 
-  const handleUnblock = (userId) => {
-    if (!window.confirm('Are you sure you want to unblock this user?')) return;
-    unblockMutation.mutate(userId);
+  const handleUnblock = (userId, name) => {
+    setConfirmModal({ open: true, action: 'unblock', userId, name: name || '' });
   };
 
   const handleEdit = (user) => {
@@ -113,9 +118,41 @@ const AllUsers = () => {
     setEditForm(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleDelete = (userId) => {
-    if (!window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) return;
+  const handleDelete = (userId, name) => {
+    setConfirmModal({ open: true, action: 'delete', userId, name: name || '' });
+  };
+
+  const closeConfirmModal = () => setConfirmModal({ open: false, action: null, userId: null, name: '' });
+
+  const confirmProceed = () => {
+    const { action, userId } = confirmModal;
+    if (!action || !userId) { closeConfirmModal(); return; }
+    if (action === 'delete') {
     deleteMutation.mutate(userId);
+    } else if (action === 'block') {
+      blockMutation.mutate(userId);
+    } else if (action === 'unblock') {
+      unblockMutation.mutate(userId);
+    }
+    closeConfirmModal();
+  };
+
+  const openHistory = async (user) => {
+    setHistoryUser(user);
+    setShowHistoryModal(true);
+    setHistoryLoading(true);
+    setHistoryError('');
+    setHistoryItems([]);
+    try {
+      const res = await api.get('/history/', { params: { userId: user._id } });
+      const payload = res?.data;
+      const items = Array.isArray(payload) ? payload : (payload?.data || []);
+      setHistoryItems(items);
+    } catch (err) {
+      setHistoryError(err?.response?.data?.message || 'Failed to load history');
+    } finally {
+      setHistoryLoading(false);
+    }
   };
 
   if (isLoading) {
@@ -160,6 +197,110 @@ const AllUsers = () => {
             <div className="flex justify-end">
               <button onClick={() => setShowErrorModal(false)} className="px-4 py-2 bg-gradient-to-r from-[#60A5FA] to-[#3B82F6] text-white rounded-lg hover:from-[#3B82F6] hover:to-[#2563EB] transition-colors border border-transparent hover:border-[#F59E0B]">Try Again</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowHistoryModal(false)} />
+          <div className="relative bg-white border border-[#E5EDFF] rounded-lg p-6 max-w-2xl w-full mx-4 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold text-[#1E3A8A]">History {historyUser ? `- ${historyUser.name}` : ''}</h3>
+              <button onClick={() => setShowHistoryModal(false)} className="text-[#64748B] hover:text-[#0F172A] transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            {historyLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-6 h-6 border-4 border-[#93C5FD] border-t-transparent rounded-full animate-spin"></div>
+                <span className="ml-3 text-[#334155]">Loading history...</span>
+              </div>
+            ) : historyError ? (
+              <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-2 rounded">{historyError}</div>
+            ) : historyItems.length === 0 ? (
+              <div className="text-[#64748B]">No history records found.</div>
+            ) : (
+              <div className="overflow-x-auto max-h-[70vh]">
+                <table className="min-w-full bg-white rounded-xl border border-[#E5EDFF]">
+                  <thead className="bg-[#F8FAFF]">
+                    <tr className="text-left text-[#475569] border-b border-[#E5EDFF]">
+                      <th className="py-2 px-4">Date</th>
+                      <th className="py-2 px-4">Action</th>
+                      <th className="py-2 px-4">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E5EDFF] text-[#334155]">
+                    {historyItems.map((h, i) => {
+                      const type = (h.type || h.action || h.event || '').toString().toLowerCase();
+                      const isSearch = type === 'search';
+                      // Prefer searchResults when type is search; else fall back to object payloads for JSON view
+                      const payload = (isSearch && Array.isArray(h.searchResults) && h.searchResults.length > 0)
+                        ? h.searchResults
+                        : (typeof h.details === 'object' && h.details) || h.data || h.payload || h.result || null;
+                      const summary = (typeof h.details === 'string' && h.details) || h.message || h.description || '';
+                      const hasExpandable = isSearch && Array.isArray(payload) && payload.length > 0;
+                      return (
+                        <>
+                          <tr key={`row-${i}`}>
+                            <td className="py-2 px-4">{h.date || h.createdAt || h.timestamp || ''}</td>
+                            <td className="py-2 px-4">{h.action || h.type || h.event || ''}</td>
+                            <td className="py-2 px-4">
+                              {hasExpandable ? (
+                                <button
+                                  className="px-3 py-1 text-sm rounded bg-blue-50 text-blue-600 hover:bg-blue-100 border border-[#C7DAFF]"
+                                  onClick={() => setExpandedHistoryIndex(expandedHistoryIndex === i ? null : i)}
+                                >
+                                  {expandedHistoryIndex === i ? 'Hide Results' : 'Show Results'}
+                                </button>
+                              ) : (
+                                summary || (isSearch ? 'No results available' : '')
+                              )}
+                            </td>
+                          </tr>
+                          {hasExpandable && expandedHistoryIndex === i && (
+                            <tr key={`exp-${i}`} className="bg-[#F8FAFF]">
+                              <td colSpan={3} className="py-3 px-4">
+                                {Array.isArray(payload) ? (
+                                  <div className="overflow-x-auto">
+                                    <table className="min-w-full bg-white rounded border border-[#E5EDFF]">
+                                      <thead className="bg-[#EEF4FF]">
+                                        <tr className="text-left text-[#475569] border-b border-[#E5EDFF]">
+                                          <th className="py-2 px-3">Model</th>
+                                          <th className="py-2 px-3">RPM</th>
+                                          <th className="py-2 px-3">Flow Rate</th>
+                                          <th className="py-2 px-3">Total Pressure</th>
+                                          <th className="py-2 px-3">Reported</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-[#E5EDFF] text-[#334155]">
+                                        {payload.map((r, idx) => (
+                                          <tr key={idx}>
+                                            <td className="py-2 px-3">{r?.model?.name || ''}</td>
+                                            <td className="py-2 px-3">{r?.rpm?.rpm ?? ''}</td>
+                                            <td className="py-2 px-3">{r?.closestPoint?.flowRate != null ? Number(r.closestPoint.flowRate).toFixed(6) : ''}</td>
+                                            <td className="py-2 px-3">{r?.closestPoint?.totalPressure != null ? Number(r.closestPoint.totalPressure).toFixed(6) : ''}</td>
+                                            <td className="py-2 px-3">{(r?.isReported) ? 'Yes' : 'No'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ) : (
+                                  <pre className="text-xs bg:white border border-[#E5EDFF] rounded p-3 overflow-auto max-h-64 text-[#334155]">
+{JSON.stringify(payload, null, 2)}
+                                  </pre>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -230,22 +371,25 @@ const AllUsers = () => {
                         </button>
                         {user.role !== 'admin' && (
                           user.isBlocked ? (
-                            <button onClick={() => handleUnblock(user._id)} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors duration-200" title="Unblock User">
+                            <button onClick={() => handleUnblock(user._id, user.name || user.username)} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors duration-200" title="Unblock User">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg>
                             </button>
                           ) : (
-                            <button onClick={() => handleBlock(user._id)} className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-colors duration-200" title="Block User">
+                            <button onClick={() => handleBlock(user._id, user.name || user.username)} className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-colors duration-200" title="Block User">
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
                             </button>
                           )
                         )}
                       </>
                     )}
+                    <button onClick={() => openHistory(user)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors duration-200" title="History">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    </button>
                   </div>
                 </td>
                 <td className="py-4">
                   {user.role !== 'admin' && (
-                    <button onClick={() => handleDelete(user._id)} className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-colors duration-200" title="Delete User">
+                    <button onClick={() => handleDelete(user._id, user.name || user.username)} className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-colors duration-200" title="Delete User">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                     </button>
                   )}
@@ -255,6 +399,31 @@ const AllUsers = () => {
           </tbody>
         </table>
       </div>
+
+      {confirmModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-[#1E3A8A] mb-2">
+              {confirmModal.action === 'delete' ? 'Confirm Delete' : confirmModal.action === 'block' ? 'Confirm Block' : 'Confirm Unblock'}
+            </h3>
+            <p className="text-[#334155] mb-4">
+              {confirmModal.action === 'delete' && (
+                <>Are you sure you want to delete "{confirmModal.name}"?</>
+              )}
+              {confirmModal.action === 'block' && (
+                <>Are you sure you want to block "{confirmModal.name}"?</>
+              )}
+              {confirmModal.action === 'unblock' && (
+                <>Are you sure you want to unblock "{confirmModal.name}"?</>
+              )}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200" onClick={closeConfirmModal}>Cancel</button>
+              <button className={`px-4 py-2 rounded text-white ${confirmModal.action === 'delete' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-amber-600 hover:bg-amber-700'}`} onClick={confirmProceed}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
