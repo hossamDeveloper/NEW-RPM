@@ -497,7 +497,7 @@ const FlowSearch = () => {
       // Header with logo and company details
       try {
         const logoBase64 = await loadImageAsBase64(logoImg);
-        doc.addImage(logoBase64, 'PNG', 30, y, 150, 70);
+        doc.addImage(logoBase64, 'PNG', 30, y, 200, 70);
       } catch (error) {
         console.log('Logo not loaded:', error);
       }
