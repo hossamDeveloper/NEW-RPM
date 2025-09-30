@@ -34,6 +34,9 @@ const FlowCalculate = () => {
   const [error, setError] = useState('');
   const [showResults, setShowResults] = useState(false);
   const [nextRpm, setNextRpm] = useState('');
+  const [pressureClass, setPressureClass] = useState(''); // low | medium | high
+  const [lowConfig, setLowConfig] = useState(''); // sisw | didw (only for low)
+  const [series, setSeries] = useState(''); // NBR, NBS, NBRS, NC, NBXI, NBR-D, NBS-D, NPD, NPE, NPF
 
   const initialPoint = {
     rpm: '',
@@ -59,6 +62,14 @@ const FlowCalculate = () => {
     c: 0
   });
 
+  const [quarticCoefficients, setQuarticCoefficients] = useState({
+    a: 0,
+    b: 0,
+    c: 0,
+    d: 0,
+    e: 0,
+  });
+
   const { data: modelsData, isLoading: qLoadingModels, error: qModelsError } = useQuery({
     queryKey: ['models', fanType],
     queryFn: async () => {
@@ -73,8 +84,36 @@ const FlowCalculate = () => {
     setIsLoadingModels(qLoadingModels);
     if (qModelsError) setModelError('Failed to fetch models. Please try again.');
     else setModelError('');
-    setModels(modelsData || []);
-  }, [qLoadingModels, qModelsError, modelsData]);
+
+    // Determine available series per selection
+    const getAvailableSeries = () => {
+      if (fanType !== 'centrifugal') return [];
+      if (pressureClass === 'low') {
+        if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI'];
+        if (lowConfig === 'didw') return ['NBR-D', 'NBS-D'];
+        return [];
+      }
+      if (pressureClass === 'medium') return ['NPD', 'NPE'];
+      if (pressureClass === 'high') return ['NPF'];
+      return [];
+    };
+
+    // Filter models for centrifugal based on selected series
+    if (fanType === 'centrifugal') {
+      if (!series) {
+        setModels([]);
+      } else {
+        const filtered = (modelsData || []).filter((m) => {
+          if (!m?.name) return false;
+          const p = series;
+          return m.name.startsWith(p + ' ') || m.name.startsWith(p + '-') || m.name.startsWith(p);
+        });
+        setModels(filtered);
+      }
+    } else {
+      setModels(modelsData || []);
+    }
+  }, [qLoadingModels, qModelsError, modelsData, fanType, pressureClass, lowConfig, series]);
 
   const { data: selectedModelData } = useQuery({
     queryKey: ['model', selectedModel],
@@ -251,6 +290,66 @@ const FlowCalculate = () => {
     return (a * x * x * x) + (b * x * x) + (c * x) + d;
   };
 
+  const solveLinearSystem5x5 = (A, b) => {
+    const n = 5;
+    const M = A.map((row, i) => [...row, b[i]]);
+    for (let col = 0; col < n; col++) {
+      let pivotRow = col;
+      for (let r = col + 1; r < n; r++) {
+        if (Math.abs(M[r][col]) > Math.abs(M[pivotRow][col])) pivotRow = r;
+      }
+      if (Math.abs(M[pivotRow][col]) < 1e-12) return null;
+      if (pivotRow !== col) {
+        const tmp = M[col];
+        M[col] = M[pivotRow];
+        M[pivotRow] = tmp;
+      }
+      const pivot = M[col][col];
+      for (let c = col; c <= n; c++) M[col][c] /= pivot;
+      for (let r = 0; r < n; r++) {
+        if (r === col) continue;
+        const factor = M[r][col];
+        for (let c = col; c <= n; c++) {
+          M[r][c] -= factor * M[col][c];
+        }
+      }
+    }
+    return M.map(row => row[n]);
+  };
+
+  const calculateQuarticCoefficients = (points) => {
+    try {
+      const xs = points.map(p => parseFloat(p.flowRate));
+      const ys = points.map(p => parseFloat(p.totalPressure));
+ 
+      if (xs.some(isNaN) || ys.some(isNaN) || points.length < 5) return null;
+ 
+      const A = xs.map(x => [
+        Math.pow(x, 4),
+        Math.pow(x, 3),
+        Math.pow(x, 2),
+        x,
+        1
+      ]);
+ 
+      const solution = solveLinearSystem5x5(A, ys);
+ 
+      if (!solution) return null;
+ 
+      const [a, b, c, d, e] = solution;
+      return { a, b, c, d, e };
+    } catch (err) {
+      console.error('Error calculating quartic coefficients:', err);
+      return null;
+    }
+  };
+
+  const evaluateQuartic = (coeffs, x) => {
+    if (!coeffs) return 0;
+    const { a, b, c, d, e } = coeffs;
+    return (a * x * x * x * x) + (b * x * x * x) + (c * x * x) + (d * x) + e;
+  };
+
   const solveLinearSystem = (A, b) => {
     try {
       const n = A.length;
@@ -348,7 +447,7 @@ const FlowCalculate = () => {
     }
   };
 
-  const generatePoints = (coeffs, basePoints) => {
+  const generatePoints = (coeffs, basePoints, pressureModel = 'quadratic') => {
     const validPoints = basePoints.filter(point => 
       point.flowRate !== '' && point.totalPressure !== '' && point.efficiency !== ''
     );
@@ -386,15 +485,24 @@ const FlowCalculate = () => {
       return Number(flowRate.toFixed(6));
     };
     const calculatePressure = (flowRate) => {
-      const totalPressure = (coeffs.a * flowRate * flowRate) + 
-                          (coeffs.b * flowRate) + 
-                          coeffs.c;
+      let totalPressure;
+      if (pressureModel === 'quartic' && coeffs && typeof coeffs === 'object' && Number.isFinite(coeffs.a)) {
+        totalPressure = evaluateQuartic(coeffs, flowRate);
+      } else if (coeffs && Number.isFinite(coeffs.a)) {
+        totalPressure = (coeffs.a * flowRate * flowRate) + (coeffs.b * flowRate) + coeffs.c;
+      } else {
+        totalPressure = 0;
+      }
+      if (!Number.isFinite(totalPressure)) totalPressure = 0;
       return Number(totalPressure.toFixed(6));
     };
     const calculateBrakePower = (flowRate, totalPressure, efficiency) => {
       const flowRateNum = Number(flowRate);
       const totalPressureNum = Number(totalPressure);
       const efficiencyDecimal = Number(efficiency) / 100;
+      if (!isFinite(flowRateNum) || !isFinite(totalPressureNum) || !isFinite(efficiencyDecimal) || efficiencyDecimal <= 0) {
+        return 0;
+      }
       const brakePower = (flowRateNum * totalPressureNum) / (efficiencyDecimal * 1000);
       return Number(brakePower.toFixed(6));
     };
@@ -474,9 +582,31 @@ const FlowCalculate = () => {
     );
     if (validPoints.length >= 2) {
       setIsLoading(true);
-      const coeffs = calculateQuadraticCoefficients(dataPoints);
-      setQuadraticCoefficients(coeffs);
-      const points = generatePoints(coeffs, dataPoints);
+      let pressureCoeffs;
+      let pressureModel = 'quadratic';
+      if (fanType === 'centrifugal') {
+        const fiveValid = dataPoints
+          .map(p => ({ x: parseFloat(p.flowRate), y: parseFloat(p.totalPressure) }))
+          .filter(p => Number.isFinite(p.x) && Number.isFinite(p.y));
+        if (fiveValid.length < 5) {
+          setIsLoading(false);
+          setError('For centrifugal, please enter at least 5 valid points for quartic fit.');
+          return;
+        }
+        pressureCoeffs = calculateQuarticCoefficients(dataPoints);
+        if (!pressureCoeffs) {
+          setIsLoading(false);
+          setError('Failed to compute quartic coefficients. Please check input points.');
+          return;
+        }
+        setQuarticCoefficients(pressureCoeffs);
+        pressureModel = 'quartic';
+      } else {
+        pressureCoeffs = calculateQuadraticCoefficients(dataPoints);
+        setQuadraticCoefficients(pressureCoeffs);
+      }
+
+      const points = generatePoints(pressureCoeffs, dataPoints, pressureModel);
       dispatch(setCalculatedPoints(points));
       dispatch(setAllDataGenerated(points));
       const currentRpm = parseFloat(validPoints[0].rpm) || 900;
@@ -535,6 +665,19 @@ const FlowCalculate = () => {
     dispatch(setNextRpmPoints(allRpmPoints[selectedRpm]));
   };
 
+  // Helpers for UI options
+  const getSeriesOptions = () => {
+    if (fanType !== 'centrifugal') return [];
+    if (pressureClass === 'low') {
+      if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI'];
+      if (lowConfig === 'didw') return ['NBR-D', 'NBS-D'];
+      return [];
+    }
+    if (pressureClass === 'medium') return ['NPD', 'NPE'];
+    if (pressureClass === 'high') return ['NPF'];
+    return [];
+  };
+
   return (
     <div className="min-h-screen bg-white py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
@@ -554,6 +697,9 @@ const FlowCalculate = () => {
                   setFanType(e.target.value);
                   setSelectedModel('');
                   setModels([]);
+                  setPressureClass('');
+                  setLowConfig('');
+                  setSeries('');
                 }}
                 className="w-full px-4 py-3 bg-white border border-[#C7DAFF] rounded-xl text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent"
               >
@@ -567,7 +713,7 @@ const FlowCalculate = () => {
               <select
                 value={selectedModel}
                 onChange={handleModelChange}
-                disabled={!fanType || isLoadingModels}
+                disabled={!fanType || isLoadingModels || (fanType === 'centrifugal' && (!pressureClass || (pressureClass === 'low' && !lowConfig) || !series))}
                 className="w-full px-4 py-3 bg-white border border-[#C7DAFF] rounded-xl text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent disabled:bg-[#F1F5FF] disabled:text-[#94A3B8]"
               >
                 <option value="" className="bg-white">Select Model</option>
@@ -581,6 +727,73 @@ const FlowCalculate = () => {
               {modelError && <p className="mt-2 text-red-600 text-sm">{modelError}</p>}
             </div>
           </div>
+          {fanType === 'centrifugal' && (
+            <div className="mb-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white rounded-xl p-4 border border-[#E5EDFF]">
+                <label className="block text-lg font-semibold text-[#1F3B73] mb-3">Pressure Class</label>
+                <select
+                  value={pressureClass}
+                  onChange={(e) => {
+                    setPressureClass(e.target.value);
+                    setLowConfig('');
+                    setSeries('');
+                    setSelectedModel('');
+                  }}
+                  className="w-full px-4 py-3 bg-white border border-[#C7DAFF] rounded-xl text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent"
+                >
+                  <option value="" className="bg-white">Select Pressure</option>
+                  <option value="low" className="bg-white">Low Pressure</option>
+                  <option value="medium" className="bg-white">Medium Pressure</option>
+                  <option value="high" className="bg-white">High Pressure</option>
+                </select>
+                {pressureClass === 'low' && (
+                  <p className="mt-2 text-xs text-[#64748B]">SISW: NBR, NBS, NBRS, NC, NBXI — DIDW: NBR-D, NBS-D</p>
+                )}
+              </div>
+              {pressureClass === 'low' && (
+                <div className="bg-white rounded-xl p-4 border border-[#E5EDFF]">
+                  <label className="block text-lg font-semibold text-[#1F3B73] mb-3">Configuration</label>
+                  <select
+                    value={lowConfig}
+                    onChange={(e) => {
+                      setLowConfig(e.target.value);
+                      setSeries('');
+                      setSelectedModel('');
+                    }}
+                    className="w-full px-4 py-3 bg-white border border-[#C7DAFF] rounded-xl text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent"
+                  >
+                    <option value="" className="bg-white">Select Configuration</option>
+                    <option value="sisw" className="bg-white">SISW</option>
+                    <option value="didw" className="bg-white">DIDW</option>
+                  </select>
+                </div>
+              )}
+              <div className="bg-white rounded-xl p-4 border border-[#E5EDFF]">
+                <label className="block text-lg font-semibold text-[#1F3B73] mb-3">Series</label>
+                <select
+                  value={series}
+                  onChange={(e) => {
+                    setSeries(e.target.value);
+                    setSelectedModel('');
+                  }}
+                  disabled={
+                    !pressureClass || (pressureClass === 'low' && !lowConfig)
+                  }
+                  className="w-full px-4 py-3 bg-white border border-[#C7DAFF] rounded-xl text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent disabled:bg-[#F1F5FF] disabled:text-[#94A3B8]"
+                >
+                  <option value="" className="bg-white">Select Series</option>
+                  {getSeriesOptions().map((s) => (
+                    <option key={s} value={s} className="bg-white">
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                {(series === 'NC' || series === 'NBXI') && (
+                  <p className="mt-2 text-xs text-[#64748B]">NC/NBXI: نفس قاعدة بيانات NBR</p>
+                )}
+              </div>
+            </div>
+          )}
           <div className="mb-8">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-semibold text-[#1E3A8A]">Data Points</h3>
@@ -756,6 +969,18 @@ const FlowCalculate = () => {
                     <p className="text-[#334155]">c: {quadraticCoefficients.c?.toFixed(6) || '0.000000'}</p>
                   </div>
                 </div>
+                {fanType === 'centrifugal' && ( // Display quartic coefficients for centrifugal
+                  <div className="bg-white rounded-lg p-4 border border-[#E5EDFF]">
+                    <h4 className="text-lg font-medium text-[#1E3A8A] mb-2">Quartic Coefficients</h4>
+                    <div className="space-y-2">
+                      <p className="text-[#334155]">a: {quarticCoefficients.a?.toFixed(6) || '0.000000'}</p>
+                      <p className="text-[#334155]">b: {quarticCoefficients.b?.toFixed(6) || '0.000000'}</p>
+                      <p className="text-[#334155]">c: {quarticCoefficients.c?.toFixed(6) || '0.000000'}</p>
+                      <p className="text-[#334155]">d: {quarticCoefficients.d?.toFixed(6) || '0.000000'}</p>
+                      <p className="text-[#334155]">e: {quarticCoefficients.e?.toFixed(6) || '0.000000'}</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}

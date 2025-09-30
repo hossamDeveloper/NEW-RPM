@@ -49,6 +49,11 @@ const FlowSearch = () => {
   const [pdfCharts, setPdfCharts] = useState({ pressure: false, power: true, efficiency: false });
   const [activeTab, setActiveTab] = useState('configuration'); // 'configuration' | 'dimensions'
 
+  // Centrifugal selection state
+  const [pressureClass, setPressureClass] = useState(''); // low | medium | high
+  const [lowConfig, setLowConfig] = useState(''); // sisw | didw (for low)
+  const [series, setSeries] = useState(''); // NBR, NBS, NBRS, NC, NBXI, NBR-D, NBS-D, NPD, NPE, NPF
+
   // Chart refs for exporting images
   const pressureChartRef = useRef(null);
   const powerChartRef = useRef(null);
@@ -61,6 +66,17 @@ const FlowSearch = () => {
       const mod = axialImages[path];
       const url = mod?.default || mod;
       if (path.includes(codeOrLabel)) return url;
+    }
+    return undefined;
+  };
+
+  // Centrifugal series images (placeholders under assets/centrifugal)
+  const centrifugalImages = import.meta.glob('../assets/centrifugal/*', { eager: true });
+  const getCentrifugalImage = (code) => {
+    for (const path in centrifugalImages) {
+      const mod = centrifugalImages[path];
+      const url = mod?.default || mod;
+      if (path.toUpperCase().includes(code.toUpperCase())) return url;
     }
     return undefined;
   };
@@ -78,6 +94,23 @@ const FlowSearch = () => {
     code: item.code,
     name: item.label,
     img: getImageUrl(item.code) || getImageUrl(item.label)
+  }));
+
+  // Centrifugal catalog (Series gallery)
+  const getSeriesOptions = () => {
+    if (pressureClass === 'low') {
+      if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI'];
+      if (lowConfig === 'didw') return ['NBR-D', 'NBS-D'];
+      return [];
+    }
+    if (pressureClass === 'medium') return ['NPD', 'NPE'];
+    if (pressureClass === 'high') return ['NPF'];
+    return [];
+  };
+  const seriesCards = getSeriesOptions().map(s => ({
+    code: s,
+    name: s,
+    img: getCentrifugalImage(s) // expects files like NBR.png, NBS.png, ...
   }));
 
   // From store we only need diameter for any client-side calc (not used now for API)
@@ -206,7 +239,10 @@ const FlowSearch = () => {
     searchData.flowRate !== '' &&
     (isJetFan ? true : searchData.staticPressure !== '') &&
     fanCategory !== '' &&
-    (fanCategory !== 'axial' || (axialType !== '' && driveType !== ''))
+    (
+      (fanCategory === 'axial' && axialType !== '' && driveType !== '') ||
+      (fanCategory === 'centrifugal' && pressureClass !== '' && (pressureClass !== 'low' || lowConfig !== '') && series !== '' && driveType !== '')
+    )
   );
 
   const handleSubmit = (e) => {
@@ -230,6 +266,14 @@ const FlowSearch = () => {
     if (fanCategory === 'axial') {
       payload.axialType = axialType; // enum code (NEID, NEI2D, ...)
       payload.axialOption = mapDriveToCode(driveType);
+    }
+    if (fanCategory === 'centrifugal') {
+      payload.centrifugal = {
+        pressureClass, // low | medium | high
+        configuration: pressureClass === 'low' ? lowConfig : undefined, // sisw | didw
+        series,
+        driveOption: mapDriveToCode(driveType)
+      };
     }
 
     searchMutation.mutate(payload);
@@ -328,7 +372,7 @@ const FlowSearch = () => {
         tension: 0.35,
       },
       ...(closestPoint ? [{
-        label: 'Closest Point',
+        label: 'Working Point',
         data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.totalPressure) }],
         backgroundColor: 'rgb(251,146,60)',
         borderColor: 'rgb(234,88,12)',
@@ -339,7 +383,7 @@ const FlowSearch = () => {
     ]
   } : (closestPoint ? {
     datasets: [
-      { label: 'Closest Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.totalPressure) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
+      { label: 'Working Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.totalPressure) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
     ]
   } : null);
 
@@ -348,8 +392,8 @@ const FlowSearch = () => {
       {
         label: 'Brake Power Curve',
         data: curvePoints.map(p => ({ x: parseFloat(p.flowRate), y: parseFloat(p.brakePower) })),
-        backgroundColor: 'rgba(99,163,255,0.3)',
-        borderColor: 'rgb(56,132,255)',
+        backgroundColor: 'rgb(148, 148, 22 ,.3)',
+        borderColor: 'rgb(148, 148, 22)',
         borderWidth: 2,
         pointRadius: 2,
         pointHoverRadius: 3,
@@ -359,7 +403,7 @@ const FlowSearch = () => {
         tension: 0.35,
       },
       ...(closestPoint ? [{
-        label: 'Closest Point',
+        label: 'Working Point',
         data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.brakePower) }],
         backgroundColor: 'rgb(251,146,60)',
         borderColor: 'rgb(234,88,12)',
@@ -370,7 +414,7 @@ const FlowSearch = () => {
     ]
   } : (closestPoint ? {
     datasets: [
-      { label: 'Closest Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.brakePower) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
+      { label: 'Working Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.brakePower) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
     ]
   } : null);
 
@@ -390,7 +434,7 @@ const FlowSearch = () => {
         tension: 0.35,
       },
       ...(closestPoint ? [{
-        label: 'Closest Point',
+        label: 'Working Point',
         data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.efficiency) }],
         backgroundColor: 'rgb(251,146,60)',
         borderColor: 'rgb(234,88,12)',
@@ -401,7 +445,7 @@ const FlowSearch = () => {
     ]
   } : (closestPoint ? {
     datasets: [
-      { label: 'Closest Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.efficiency) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
+      { label: 'Working Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.efficiency) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
     ]
   } : null);
 
@@ -877,14 +921,38 @@ const FlowSearch = () => {
               <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Category</label>
               <div className="flex gap-3">
                 <label className="inline-flex items-center gap-2">
-                  <input type="radio" name="fanCategory" checked={fanCategory==='axial'} onChange={() => { setFanCategory('axial'); setAxialType(''); setDriveType(''); }} />
+                  <input type="radio" name="fanCategory" checked={fanCategory==='axial'} onChange={() => { setFanCategory('axial'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} />
                   <span>Axial</span>
                 </label>
                 <label className="inline-flex items-center gap-2">
-                  <input type="radio" name="fanCategory" checked={fanCategory==='centrifugal'} onChange={() => { setFanCategory('centrifugal'); setAxialType(''); setDriveType(''); }} />
+                  <input type="radio" name="fanCategory" checked={fanCategory==='centrifugal'} onChange={() => { setFanCategory('centrifugal'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} />
                   <span>Centrifugal</span>
                 </label>
               </div>
+              {fanCategory === 'centrifugal' && (
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Select Pressure</label>
+                    <select value={pressureClass} onChange={(e)=>{ setPressureClass(e.target.value); setLowConfig(''); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
+                      <option value="">Select pressure</option>
+                      <option value="low">Low Pressure</option>
+                      <option value="medium">Medium Pressure</option>
+                      <option value="high">High Pressure</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Select Configuration</label>
+                    <select value={lowConfig} onChange={(e)=>{ setLowConfig(e.target.value); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none" disabled={pressureClass !== 'low'}>
+                      <option value="">Select configuration</option>
+                      <option value="sisw">SISW</option>
+                      <option value="didw">DIDW</option>
+                    </select>
+                  </div>
+                  {pressureClass === 'low' && (
+                    <p className="text-xs text-[#64748B]">SISW: NBR, NBS, NBRS, NC, NBXI — DIDW: NBR-D, NBS-D</p>
+                  )}
+                </div>
+              )}
             </div>
 
             {fanCategory === 'axial' && (
@@ -912,6 +980,50 @@ const FlowSearch = () => {
             )}
 
             {fanCategory === 'axial' && axialType && (
+              <div>
+                <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Drive Type</label>
+                <select value={driveType} onChange={(e)=>setDriveType(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
+                  <option value="">Select drive type</option>
+                  {driveOptions.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {fanCategory === 'centrifugal' && (
+              <div>
+                <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Centrifugal Type</label>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {seriesCards.map(card => (
+                      <button key={card.code} type="button" onClick={()=>setSeries(card.code)} className={`border rounded-lg p-2 hover:shadow transition ${series===card.code ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'} ${(!pressureClass || (pressureClass==='low' && !lowConfig)) ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {card.img ? (
+                          <img src={card.img} alt={card.name} className="w-full h-20 object-contain" />
+                        ) : (
+                          <div className="w-full h-20 flex items-center justify-center text-xs text-[#64748B]">{card.name}</div>
+                        )}
+                        <div className="mt-2 text-xs text-[#1F3B73] text-center">{card.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                  {(series === 'NC' || series === 'NBXI') && (
+                    <p className="text-xs text-[#64748B]">NC/NBXI: نفس قاعدة بيانات NBR</p>
+                  )}
+                  {series && (
+                    <div className="mt-2 rounded-xl border border-[#E5EDFF] bg-white p-4">
+                      <div className="text-[#1F3B73] text-sm font-semibold mb-3">{`${series} - Centrifugal Type`}</div>
+                      <div className="flex items-center gap-4">
+                        {(() => { const card = seriesCards.find(c => c.code === series); return card?.img ? (
+                          <img src={card.img} alt={card.name} className="w-full max-w-md h-56 object-contain mx-auto" />
+                        ) : null; })()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+           {fanCategory === 'centrifugal' && series && (
               <div>
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Drive Type</label>
                 <select value={driveType} onChange={(e)=>setDriveType(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
