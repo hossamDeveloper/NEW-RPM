@@ -9,6 +9,10 @@ const AddModel = () => {
     factor: 0,
     startRpmNumber: 0,
     endRpmNumber: 0,
+    // Centrifugal-only fields
+    pressureClass: "", // low | medium | high
+    configuration: "", // sisw | didw (for low)
+    series: "", // NBR, NBS, NBRS, NC, NBXI, NBR-D, NBS-D, NPD, NPE, NPF
     points: [
       {
         rpm: 0,
@@ -33,6 +37,9 @@ const AddModel = () => {
         factor: 0,
         startRpmNumber: 0,
         endRpmNumber: 0,
+        pressureClass: "",
+        configuration: "",
+        series: "",
         points: [
           { rpm: 0, flowRate: 0, totalPressure: 0, efficiency: 0, lpa: 0 },
         ],
@@ -73,10 +80,23 @@ const AddModel = () => {
     setFormData({ ...formData, points: newPoints });
   };
 
+  const getSeriesOptions = () => {
+    if (formData.type !== 'centrifugal') return [];
+    if (formData.pressureClass === 'low') {
+      if (formData.configuration === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI'];
+      if (formData.configuration === 'didw') return ['NBR-D', 'NBS-D'];
+      return [];
+    }
+    if (formData.pressureClass === 'medium') return ['NPD', 'NPE'];
+    if (formData.pressureClass === 'high') return ['NPF'];
+    return [];
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const dataToSend = {
-      ...formData,
+    const basePayload = {
+      name: formData.name,
+      type: formData.type,
       factor: Number(formData.factor),
       startRpmNumber: Number(formData.startRpmNumber),
       endRpmNumber: Number(formData.endRpmNumber),
@@ -88,6 +108,15 @@ const AddModel = () => {
         lpa: Number(point.lpa)
       }))
     };
+
+    const centrifugalExtras = (formData.type === 'centrifugal') ? {
+      pressureClass: formData.pressureClass || undefined,
+      configuration: formData.pressureClass === 'low' ? (formData.configuration || undefined) : undefined,
+      series: formData.series || undefined,
+    } : {};
+
+    const dataToSend = { ...basePayload, ...centrifugalExtras };
+
     console.log('AddModel payload:', dataToSend);
     setNotification(null);
     addModelMutation.mutate(dataToSend);
@@ -113,7 +142,13 @@ const AddModel = () => {
           <select
             name="type"
             value={formData.type}
-            onChange={handleChange}
+            onChange={(e) => {
+              // reset centrifugal extras on type change
+              handleChange(e);
+              if (e.target.value !== 'centrifugal') {
+                setFormData(prev => ({ ...prev, pressureClass: '', configuration: '', series: '' }));
+              }
+            }}
             className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             required
           >
@@ -122,6 +157,63 @@ const AddModel = () => {
             <option value="centrifugal">Centrifugal</option>
           </select>
         </div>
+
+        {formData.type === 'centrifugal' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Pressure</label>
+              <select
+                name="pressureClass"
+                value={formData.pressureClass}
+                onChange={(e) => {
+                  // reset dependent
+                  setFormData(prev => ({ ...prev, pressureClass: e.target.value, configuration: '', series: '' }));
+                }}
+                className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select pressure</option>
+                <option value="low">Low Pressure</option>
+                <option value="medium">Medium Pressure</option>
+                <option value="high">High Pressure</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select Configuration</label>
+              <select
+                name="configuration"
+                value={formData.configuration}
+                onChange={(e) => {
+                  setFormData(prev => ({ ...prev, configuration: e.target.value, series: '' }));
+                }}
+                disabled={formData.pressureClass !== 'low'}
+                className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+              >
+                <option value="">Select configuration</option>
+                <option value="sisw">SISW</option>
+                <option value="didw">DIDW</option>
+              </select>
+              {formData.pressureClass === 'low' && (
+                <p className="mt-1 text-xs text-gray-500">SISW: NBR, NBS, NBRS, NC, NBXI — DIDW: NBR-D, NBS-D</p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Series</label>
+              <select
+                name="series"
+                value={formData.series}
+                onChange={handleChange}
+                disabled={!formData.pressureClass || (formData.pressureClass === 'low' && !formData.configuration)}
+                className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+              >
+                <option value="">Select series</option>
+                {getSeriesOptions().map(opt => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Name:

@@ -81,6 +81,22 @@ const FlowSearch = () => {
     return undefined;
   };
 
+  // Dimensions images resolver for Vercel/static builds
+  const dimensionImages = import.meta.glob('../assets/dimensions/*', { eager: true });
+  const resolveDimensionImage = (maybePath) => {
+    if (!maybePath) return undefined;
+    // If already a full URL/module url, return it
+    if (/^https?:\/\//.test(maybePath)) return maybePath;
+    // Try match by filename
+    const needle = String(maybePath).split('/').pop();
+    for (const path in dimensionImages) {
+      const mod = dimensionImages[path];
+      const url = mod?.default || mod;
+      if (path.endsWith(needle) || path.includes(needle)) return url;
+    }
+    return undefined;
+  };
+
   const axialCatalog = [
     { code: 'NEI2D', label: 'Axial jet fan (NEI2D)' },
     { code: 'NEI3D', label: 'Axial box inline (NEI3D)' },
@@ -474,9 +490,9 @@ const FlowSearch = () => {
             console.log('Image load error:', error, 'for path:', imageSrc);
             reject(error);
           };
-          // تحويل المسار ليعمل مع Vite
-          const correctedPath = imageSrc.startsWith('/src/') ? imageSrc : `/src${imageSrc}`;
-          img.src = correctedPath;
+          // Use resolved URL for static builds (avoid '/src' paths)
+          const resolved = resolveDimensionImage(imageSrc) || imageSrc;
+          img.src = resolved;
         });
       };
 
@@ -737,8 +753,8 @@ const FlowSearch = () => {
               // Right column: Variant image
               if (variant.image) {
                 try {
-                  console.log('Loading variant image:', variant.image);
-                  const variantImageBase64 = await loadImageAsBase64(variant.image);
+                  const resolvedVariantUrl = resolveDimensionImage(variant.image) || variant.image;
+                  const variantImageBase64 = await loadImageAsBase64(resolvedVariantUrl);
                   
                   const img = new Image();
                   img.src = variantImageBase64;
@@ -828,7 +844,8 @@ const FlowSearch = () => {
             // Right column: Dimensions image
             if (dimensionsData.image) {
               try {
-                const dimensionsImageBase64 = await loadImageAsBase64(dimensionsData.image);
+                const resolvedUrl = resolveDimensionImage(dimensionsData.image) || dimensionsData.image;
+                const dimensionsImageBase64 = await loadImageAsBase64(resolvedUrl);
                 
                 const img = new Image();
                 img.src = dimensionsImageBase64;
@@ -897,6 +914,9 @@ const FlowSearch = () => {
     if (!axialType || !selected?.model?.name) return null;
     return getDimensionsData(axialType, selected.model.name);
   };
+
+  // In UI rendering for dimensions (non-PDF), resolve URLs too
+  const resolveUiImage = (p) => resolveDimensionImage(p) || p;
 
 
   return (
@@ -1219,7 +1239,7 @@ const FlowSearch = () => {
                                       {variant.image && (
                                         <div className="flex justify-center">
                                           <img 
-                                            src={variant.image} 
+                                            src={resolveUiImage(variant.image)} 
                                             alt={variant.name}
                                             className="max-w-full h-auto max-h-96 object-contain"
                                             onError={(e) => {
@@ -1275,7 +1295,7 @@ const FlowSearch = () => {
                               <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">{dimensionsData.name}</h3>
                               <div className="flex justify-center">
                                 <img 
-                                  src={dimensionsData.image} 
+                                  src={resolveUiImage(dimensionsData.image)} 
                                   alt={dimensionsData.name}
                                   className="max-w-full h-auto max-h-96 object-contain"
                                   onError={(e) => {

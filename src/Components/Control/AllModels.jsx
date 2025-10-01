@@ -408,8 +408,19 @@ const AllModels = () => {
             </div>
 
             <div className="mt-4">
-              <button type="submit" className="bg-emerald-50 text-emerald-600 px-4 py-2 rounded hover:bg-emerald-100">
-                Update
+              <button
+                type="submit"
+                disabled={updateMutation.isPending}
+                className={`px-4 py-2 rounded transition-colors ${updateMutation.isPending ? 'bg-emerald-300 text-white cursor-not-allowed' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
+              >
+                {updateMutation.isPending ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    Updating...
+                  </span>
+                ) : (
+                  'Update'
+                )}
               </button>
               <button
                 type="button"
