@@ -48,6 +48,8 @@ const FlowSearch = () => {
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfCharts, setPdfCharts] = useState({ pressure: false, power: true, efficiency: false });
   const [activeTab, setActiveTab] = useState('configuration'); // 'configuration' | 'dimensions'
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState('');
 
   // Centrifugal selection state
   const [pressureClass, setPressureClass] = useState(''); // low | medium | high
@@ -105,6 +107,32 @@ const FlowSearch = () => {
       console.warn('resolveDimensionImage failed for', maybePath, e);
       return undefined;
     }
+  };
+
+  // Universal image resolver for PDF (logo, axial types, centrifugal series, dimensions)
+  const resolveAnyImage = (src) => {
+    if (!src) return undefined;
+    if (/^https?:\/\//i.test(src)) return src;
+    // Already a built asset URL (starts with /assets)
+    if (typeof src === 'string' && src.startsWith('/assets/')) return src;
+    // Try dimensions
+    const dim = resolveDimensionImage(src);
+    if (dim) return dim;
+    // Try match against axialImages
+    const s = String(src).toLowerCase();
+    for (const path in axialImages) {
+      const mod = axialImages[path];
+      const url = mod?.default || mod;
+      if (path.toLowerCase().includes(s)) return url;
+    }
+    // Try centrifugal images by code filename
+    for (const path in centrifugalImages) {
+      const mod = centrifugalImages[path];
+      const url = mod?.default || mod;
+      if (path.toLowerCase().includes(s)) return url;
+    }
+    // If src is already a module URL string
+    return src;
   };
 
   const axialCatalog = [
@@ -477,35 +505,75 @@ const FlowSearch = () => {
 
   const handleGeneratePdf = async () => {
     try {
+      setPdfError('');
+      setIsGeneratingPdf(true);
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       let y = 40;
 
-      // Helper function to load image and convert to base64
+      // Prefer fetch->blob->FileReader for same-origin built assets
       const loadImageAsBase64 = (imageSrc) => {
-        return new Promise((resolve, reject) => {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            ctx.drawImage(img, 0, 0);
-            const dataURL = canvas.toDataURL('image/png');
-            resolve(dataURL);
-          };
-          img.onerror = (error) => {
-            console.log('Image load error:', error, 'for path:', imageSrc);
-            reject(error);
-          };
-          const resolved = resolveDimensionImage(imageSrc) || imageSrc;
-          // Debug if unresolved
-          if (!/^https?:\/\//i.test(resolved) && !resolved.includes('/assets/')) {
-            console.warn('Unresolved image path, may fail in prod:', imageSrc, 'resolved to:', resolved);
+        const resolved = resolveAnyImage(imageSrc) || imageSrc;
+        return new Promise(async (resolve, reject) => {
+          try {
+            const resp = await fetch(resolved, { cache: 'no-store' });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const contentType = resp.headers.get('content-type') || '';
+            if (!contentType.toLowerCase().startsWith('image/')) {
+              throw new Error(`Non-image content-type: ${contentType}`);
+            }
+            const blob = await resp.blob();
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = (e) => reject(e);
+            reader.readAsDataURL(blob);
+            return;
+          } catch (err) {
+            // Fallback to <img> + canvas
+            const tryImg = (src) => new Promise((res, rej) => {
+              try {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                  try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.naturalWidth;
+                    canvas.height = img.naturalHeight;
+                    ctx.drawImage(img, 0, 0);
+                    const dataURL = canvas.toDataURL('image/png');
+                    res(dataURL);
+                  } catch (e) {
+                    rej(e);
+                  }
+                };
+                img.onerror = (e) => rej(e);
+                img.src = src;
+              } catch (e2) {
+                rej(e2);
+              }
+            });
+            try {
+              // First attempt with resolved
+              const data = await tryImg(resolved);
+              resolve(data);
+            } catch (e1) {
+              try {
+                // Second attempt: if looks like a filename, try from public root
+                const needle = String(imageSrc).split('/').pop();
+                if (needle) {
+                  const publicUrl = `/${needle}`;
+                  const data2 = await tryImg(publicUrl);
+                  resolve(data2);
+                  return;
+                }
+                throw e1;
+              } catch (e2) {
+                reject(e2);
+              }
+            }
           }
-          img.src = resolved;
         });
       };
 
@@ -766,7 +834,7 @@ const FlowSearch = () => {
               // Right column: Variant image
               if (variant.image) {
                 try {
-                  const resolvedVariantUrl = resolveDimensionImage(variant.image) || variant.image;
+                  const resolvedVariantUrl = resolveAnyImage(variant.image) || variant.image;
                   const variantImageBase64 = await loadImageAsBase64(resolvedVariantUrl);
                   
                   const img = new Image();
@@ -857,7 +925,7 @@ const FlowSearch = () => {
             // Right column: Dimensions image
             if (dimensionsData.image) {
               try {
-                const resolvedUrl = resolveDimensionImage(dimensionsData.image) || dimensionsData.image;
+                const resolvedUrl = resolveAnyImage(dimensionsData.image) || dimensionsData.image;
                 const dimensionsImageBase64 = await loadImageAsBase64(resolvedUrl);
                 
                 const img = new Image();
@@ -919,7 +987,9 @@ const FlowSearch = () => {
       setShowPdfModal(false);
     } catch (error) {
       console.error('PDF generation error:', error);
-      setShowPdfModal(false);
+      setPdfError(error?.message || 'Failed to generate PDF. Please try again.');
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -1404,10 +1474,20 @@ const FlowSearch = () => {
                   <input type="checkbox" checked={pdfCharts.efficiency} onChange={(e)=>setPdfCharts(prev=>({...prev, efficiency: e.target.checked}))} />
                   <span>Include Efficiency Chart</span>
                 </label>
+                {pdfError && (
+                  <div className="mt-2 p-2 rounded border border-rose-200 bg-rose-50 text-rose-700 text-sm">{pdfError}</div>
+                )}
               </div>
               <div className="mt-6 flex justify-end gap-3">
-                <button type="button" onClick={()=>setShowPdfModal(false)} className="px-4 py-2 rounded-lg border border-[#E5EDFF] text-[#475569]">Cancel</button>
-                <button type="button" onClick={handleGeneratePdf} className="px-4 py-2 rounded-lg bg-[#1E3A8A] text-white">Generate</button>
+                <button type="button" onClick={()=>{ if(!isGeneratingPdf) setShowPdfModal(false); }} className="px-4 py-2 rounded-lg border border-[#E5EDFF] text-[#475569] disabled:opacity-50" disabled={isGeneratingPdf}>Cancel</button>
+                <button type="button" onClick={handleGeneratePdf} disabled={isGeneratingPdf} className={`px-4 py-2 rounded-lg text-white ${isGeneratingPdf ? 'bg-[#93C5FD] cursor-not-allowed' : 'bg-[#1E3A8A] hover:bg-[#1F3B73]'}`}>
+                  {isGeneratingPdf ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      Generating...
+                    </span>
+                  ) : 'Generate'}
+                </button>
               </div>
             </div>
           </div>
