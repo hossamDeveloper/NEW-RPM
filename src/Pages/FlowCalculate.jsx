@@ -111,7 +111,7 @@ const FlowCalculate = () => {
         setModels(filtered);
       }
     } else {
-      setModels(modelsData || []);
+    setModels(modelsData || []);
     }
   }, [qLoadingModels, qModelsError, modelsData, fanType, pressureClass, lowConfig, series]);
 

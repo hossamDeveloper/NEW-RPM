@@ -85,16 +85,26 @@ const FlowSearch = () => {
   const dimensionImages = import.meta.glob('../assets/dimensions/*', { eager: true });
   const resolveDimensionImage = (maybePath) => {
     if (!maybePath) return undefined;
-    // If already a full URL/module url, return it
-    if (/^https?:\/\//.test(maybePath)) return maybePath;
-    // Try match by filename
+    // Already a full URL
+    if (/^https?:\/\//i.test(maybePath)) return maybePath;
+    // Normalize and extract filename (case-insensitive)
     const needle = String(maybePath).split('/').pop();
+    if (!needle) return undefined;
+    const needleLower = needle.toLowerCase();
     for (const path in dimensionImages) {
       const mod = dimensionImages[path];
       const url = mod?.default || mod;
-      if (path.endsWith(needle) || path.includes(needle)) return url;
+      const pathLower = path.toLowerCase();
+      if (pathLower.endsWith(needleLower) || pathLower.includes(`/${needleLower}`)) return url;
     }
-    return undefined;
+    // Fallback: try constructing URL relative to this module (vite will rewrite)
+    try {
+      const url = new URL(`../assets/dimensions/${needle}`, import.meta.url).href;
+      return url;
+    } catch (e) {
+      console.warn('resolveDimensionImage failed for', maybePath, e);
+      return undefined;
+    }
   };
 
   const axialCatalog = [
@@ -490,8 +500,11 @@ const FlowSearch = () => {
             console.log('Image load error:', error, 'for path:', imageSrc);
             reject(error);
           };
-          // Use resolved URL for static builds (avoid '/src' paths)
           const resolved = resolveDimensionImage(imageSrc) || imageSrc;
+          // Debug if unresolved
+          if (!/^https?:\/\//i.test(resolved) && !resolved.includes('/assets/')) {
+            console.warn('Unresolved image path, may fail in prod:', imageSrc, 'resolved to:', resolved);
+          }
           img.src = resolved;
         });
       };
