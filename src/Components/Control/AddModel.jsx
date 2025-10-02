@@ -10,9 +10,9 @@ const AddModel = () => {
     startRpmNumber: 0,
     endRpmNumber: 0,
     // Centrifugal-only fields
-    pressureClass: "", // low | medium | high
-    configuration: "", // sisw | didw (for low)
-    series: "", // NBR, NBS, NBRS, NC, NBXI, NBR-D, NBS-D, NPD, NPE, NPF
+    pressureType: "", // low | medium | high
+    configurationType: "", // SISW | DIDW (for low)
+    centrifugalType: "", // NBR, NBS, NBRS, NC, NBXI, NBR-D, NBS-D, NPD, NPE, NPF
     points: [
       {
         rpm: 0,
@@ -37,9 +37,9 @@ const AddModel = () => {
         factor: 0,
         startRpmNumber: 0,
         endRpmNumber: 0,
-        pressureClass: "",
-        configuration: "",
-        series: "",
+        pressureType: "",
+        configurationType: "",
+        centrifugalType: "",
         points: [
           { rpm: 0, flowRate: 0, totalPressure: 0, efficiency: 0, lpa: 0 },
         ],
@@ -80,15 +80,15 @@ const AddModel = () => {
     setFormData({ ...formData, points: newPoints });
   };
 
-  const getSeriesOptions = () => {
+  const getCentrifugalTypeOptions = () => {
     if (formData.type !== 'centrifugal') return [];
-    if (formData.pressureClass === 'low') {
-      if (formData.configuration === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI'];
-      if (formData.configuration === 'didw') return ['NBR-D', 'NBS-D'];
+    if (formData.pressureType === 'low') {
+      if (formData.configurationType === 'SISW') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI'];
+      if (formData.configurationType === 'DIDW') return ['NBR-D', 'NBS-D'];
       return [];
     }
-    if (formData.pressureClass === 'medium') return ['NPD', 'NPE'];
-    if (formData.pressureClass === 'high') return ['NPF'];
+    if (formData.pressureType === 'medium') return ['NPD', 'NPE'];
+    if (formData.pressureType === 'high') return ['NPF'];
     return [];
   };
 
@@ -110,9 +110,9 @@ const AddModel = () => {
     };
 
     const centrifugalExtras = (formData.type === 'centrifugal') ? {
-      pressureClass: formData.pressureClass || undefined,
-      configuration: formData.pressureClass === 'low' ? (formData.configuration || undefined) : undefined,
-      series: formData.series || undefined,
+      pressureType: formData.pressureType || undefined,
+      configurationType: formData.pressureType === 'low' ? (formData.configurationType || undefined) : undefined,
+      centrifugalType: formData.centrifugalType || undefined,
     } : {};
 
     const dataToSend = { ...basePayload, ...centrifugalExtras };
@@ -146,7 +146,7 @@ const AddModel = () => {
               // reset centrifugal extras on type change
               handleChange(e);
               if (e.target.value !== 'centrifugal') {
-                setFormData(prev => ({ ...prev, pressureClass: '', configuration: '', series: '' }));
+                setFormData(prev => ({ ...prev, pressureType: '', configurationType: '', centrifugalType: '' }));
               }
             }}
             className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -163,11 +163,11 @@ const AddModel = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Select Pressure</label>
               <select
-                name="pressureClass"
-                value={formData.pressureClass}
+                name="pressureType"
+                value={formData.pressureType}
                 onChange={(e) => {
                   // reset dependent
-                  setFormData(prev => ({ ...prev, pressureClass: e.target.value, configuration: '', series: '' }));
+                  setFormData(prev => ({ ...prev, pressureType: e.target.value, configurationType: '', centrifugalType: '' }));
                 }}
                 className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
@@ -180,33 +180,33 @@ const AddModel = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Select Configuration</label>
               <select
-                name="configuration"
-                value={formData.configuration}
+                name="configurationType"
+                value={formData.configurationType}
                 onChange={(e) => {
-                  setFormData(prev => ({ ...prev, configuration: e.target.value, series: '' }));
+                  setFormData(prev => ({ ...prev, configurationType: e.target.value, centrifugalType: '' }));
                 }}
-                disabled={formData.pressureClass !== 'low'}
+                disabled={formData.pressureType !== 'low'}
                 className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
               >
                 <option value="">Select configuration</option>
-                <option value="sisw">SISW</option>
-                <option value="didw">DIDW</option>
+                <option value="SISW">SISW</option>
+                <option value="DIDW">DIDW</option>
               </select>
-              {formData.pressureClass === 'low' && (
+              {formData.pressureType === 'low' && (
                 <p className="mt-1 text-xs text-gray-500">SISW: NBR, NBS, NBRS, NC, NBXI — DIDW: NBR-D, NBS-D</p>
               )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Series</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Centrifugal Type</label>
               <select
-                name="series"
-                value={formData.series}
+                name="centrifugalType"
+                value={formData.centrifugalType}
                 onChange={handleChange}
-                disabled={!formData.pressureClass || (formData.pressureClass === 'low' && !formData.configuration)}
+                disabled={!formData.pressureType || (formData.pressureType === 'low' && !formData.configurationType)}
                 className="w-full p-2.5 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
               >
-                <option value="">Select series</option>
-                {getSeriesOptions().map(opt => (
+                <option value="">Select centrifugal type</option>
+                {getCentrifugalTypeOptions().map(opt => (
                   <option key={opt} value={opt}>{opt}</option>
                 ))}
               </select>

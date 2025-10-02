@@ -45,11 +45,16 @@ const FlowSearch = () => {
   const [apiResults, setApiResults] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [chartView, setChartView] = useState('power'); // 'power' | 'efficiency'
+  const [pressureChartView, setPressureChartView] = useState('total'); // 'total' | 'static'
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfCharts, setPdfCharts] = useState({ pressure: false, power: true, efficiency: false });
   const [activeTab, setActiveTab] = useState('configuration'); // 'configuration' | 'dimensions'
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfError, setPdfError] = useState('');
+  
+  // New state for dynamically loaded points
+  const [modelPoints, setModelPoints] = useState({}); // { rpmId: points[] }
+  const [loadingPoints, setLoadingPoints] = useState({}); // { rpmId: boolean }
 
   // Centrifugal selection state
   const [pressureClass, setPressureClass] = useState(''); // low | medium | high
@@ -58,6 +63,7 @@ const FlowSearch = () => {
 
   // Chart refs for exporting images
   const pressureChartRef = useRef(null);
+  const staticPressureChartRef = useRef(null);
   const powerChartRef = useRef(null);
   const efficiencyChartRef = useRef(null);
 
@@ -112,26 +118,58 @@ const FlowSearch = () => {
   // Universal image resolver for PDF (logo, axial types, centrifugal series, dimensions)
   const resolveAnyImage = (src) => {
     if (!src) return undefined;
-    if (/^https?:\/\//i.test(src)) return src;
+    console.log('Resolving image:', src);
+    
+    // Already a full URL
+    if (/^https?:\/\//i.test(src)) {
+      console.log('Already full URL:', src);
+      return src;
+    }
+    
     // Already a built asset URL (starts with /assets)
-    if (typeof src === 'string' && src.startsWith('/assets/')) return src;
-    // Try dimensions
+    if (typeof src === 'string' && src.startsWith('/assets/')) {
+      console.log('Already asset URL:', src);
+      return src;
+    }
+    
+    // Try dimensions first
     const dim = resolveDimensionImage(src);
-    if (dim) return dim;
+    if (dim) {
+      console.log('Resolved via dimensions:', dim);
+      return dim;
+    }
+    
     // Try match against axialImages
     const s = String(src).toLowerCase();
     for (const path in axialImages) {
       const mod = axialImages[path];
       const url = mod?.default || mod;
-      if (path.toLowerCase().includes(s)) return url;
+      if (path.toLowerCase().includes(s)) {
+        console.log('Resolved via axialImages:', url);
+        return url;
+      }
     }
+    
     // Try centrifugal images by code filename
     for (const path in centrifugalImages) {
       const mod = centrifugalImages[path];
       const url = mod?.default || mod;
-      if (path.toLowerCase().includes(s)) return url;
+      if (path.toLowerCase().includes(s)) {
+        console.log('Resolved via centrifugalImages:', url);
+        return url;
+      }
     }
-    // If src is already a module URL string
+    
+    // Try to extract filename and construct URL
+    const filename = String(src).split('/').pop();
+    if (filename) {
+      // Try as asset URL
+      const assetUrl = `/assets/${filename}`;
+      console.log('Trying asset URL:', assetUrl);
+      return assetUrl;
+    }
+    
+    console.log('Using original src:', src);
     return src;
   };
 
@@ -150,7 +188,7 @@ const FlowSearch = () => {
     img: getImageUrl(item.code) || getImageUrl(item.label)
   }));
 
-  // Centrifugal catalog (Series gallery)
+  // Centrifugal catalog (Series gallery) - moved outside conditional rendering for PDF access
   const getSeriesOptions = () => {
     if (pressureClass === 'low') {
       if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI'];
@@ -161,10 +199,22 @@ const FlowSearch = () => {
     if (pressureClass === 'high') return ['NPF'];
     return [];
   };
-  const seriesCards = getSeriesOptions().map(s => ({
+  
+  // Get all possible series for image mapping
+  const getAllSeriesOptions = () => {
+    return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NBR-D', 'NBS-D', 'NPD', 'NPE', 'NPF'];
+  };
+  
+  const seriesCards = getAllSeriesOptions().map(s => ({
     code: s,
     name: s,
     img: getCentrifugalImage(s) // expects files like NBR.png, NBS.png, ...
+  }));
+  
+  const currentSeriesCards = getSeriesOptions().map(s => ({
+    code: s,
+    name: s,
+    img: getCentrifugalImage(s)
   }));
 
   // From store we only need diameter for any client-side calc (not used now for API)
@@ -277,6 +327,20 @@ const FlowSearch = () => {
         setSelectedIndex(0);
         setError('');
         setNotification({ type: 'success', message: 'Search created successfully' });
+        
+        // Clear previous points data when new search is performed
+        setModelPoints({});
+        setLoadingPoints({});
+        
+        // Automatically load points for the first model
+        if (results.length > 0) {
+          const firstResult = results[0];
+          const rpmId = firstResult?.rpm?._id;
+          if (rpmId) {
+            setLoadingPoints(prev => ({ ...prev, [rpmId]: true }));
+            fetchPointsMutation.mutate(rpmId);
+          }
+        }
       } else {
         setApiResults([]);
         setNotification({ type: 'error', message: res?.data?.message || 'Search failed' });
@@ -288,6 +352,36 @@ const FlowSearch = () => {
       setNotification({ type: 'error', message: msg });
     }
   });
+
+  // Mutation to fetch points for a specific RPM
+  const fetchPointsMutation = useMutation({
+    mutationFn: (rpmId) => api.get(`/point/?rpmId=${rpmId}`),
+    onSuccess: (res, rpmId) => {
+      const points = res?.data?.data || res?.data || [];
+      setModelPoints(prev => ({ ...prev, [rpmId]: points }));
+      setLoadingPoints(prev => ({ ...prev, [rpmId]: false }));
+    },
+    onError: (err, rpmId) => {
+      console.error('Failed to fetch points:', err);
+      setLoadingPoints(prev => ({ ...prev, [rpmId]: false }));
+      setNotification({ 
+        type: 'error', 
+        message: err?.response?.data?.message || 'Failed to load curve points' 
+      });
+    }
+  });
+
+  // Function to fetch points for a selected model
+  const handleModelSelect = (index) => {
+    setSelectedIndex(index);
+    const selectedResult = apiResults[index];
+    const rpmId = selectedResult?.rpm?._id;
+    
+    if (rpmId && !modelPoints[rpmId] && !loadingPoints[rpmId]) {
+      setLoadingPoints(prev => ({ ...prev, [rpmId]: true }));
+      fetchPointsMutation.mutate(rpmId);
+    }
+  };
 
   const isFormComplete = (
     searchData.flowRate !== '' &&
@@ -317,17 +411,17 @@ const FlowSearch = () => {
       staticPressureUnit: pressureUnit,
       modelType: fanCategory
     };
+
     if (fanCategory === 'axial') {
       payload.axialType = axialType; // enum code (NEID, NEI2D, ...)
       payload.axialOption = mapDriveToCode(driveType);
     }
+
     if (fanCategory === 'centrifugal') {
-      payload.centrifugal = {
-        pressureClass, // low | medium | high
-        configuration: pressureClass === 'low' ? lowConfig : undefined, // sisw | didw
-        series,
-        driveOption: mapDriveToCode(driveType)
-      };
+      payload.pressureType = pressureClass; // low | medium | high
+      payload.configurationType = pressureClass === 'low' ? lowConfig.toUpperCase() : undefined; // SISW | DIDW
+      payload.centrifugalType = series; // NBR, NBS, NBRS, etc.
+      payload.axialOption = mapDriveToCode(driveType); // BD, DD, BDWF
     }
 
     searchMutation.mutate(payload);
@@ -336,39 +430,13 @@ const FlowSearch = () => {
   const selected = apiResults[selectedIndex];
   const closestPoint = selected?.closestPoint;
 
-  // Try to detect the 1000-point series from API result
-  const findPointSeries = (obj) => {
-    if (!obj || typeof obj !== 'object') return [];
-    // Prefer common property names first
-    const candidateKeys = [
-      'points',
-      'generatedPoints',
-      'curvePoints',
-      'curve',
-      'dataPoints',
-      'allPoints',
-      'series',
-      'samples'
-    ];
-    for (const key of candidateKeys) {
-      const v = obj?.[key];
-      if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
-        const p = v[0];
-        if ('flowRate' in p && ('totalPressure' in p || 'brakePower' in p)) return v;
-      }
-    }
-    // Fallback: scan all object values to find an array of points
-    for (const key in obj) {
-      const v = obj[key];
-      if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
-        const p = v[0];
-        if ('flowRate' in p && ('totalPressure' in p || 'brakePower' in p)) return v;
-      }
-    }
-    return [];
+  // Get points for the currently selected model from our dynamically loaded points
+  const getCurrentModelPoints = () => {
+    const rpmId = selected?.rpm?._id;
+    return rpmId ? modelPoints[rpmId] || [] : [];
   };
 
-  const curvePoints = findPointSeries(selected);
+  const curvePoints = getCurrentModelPoints();
 
   const chartOptions = {
     responsive: true,
@@ -380,11 +448,24 @@ const FlowSearch = () => {
         callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} m3/s`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)} Pa`]; } } }
     },
     scales: {
-      x: { type: 'linear', position: 'bottom', title: { display: true, text: 'Flow Rate (m3/s)', color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { top: 10 } }, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: {}, beginAtZero: true, min: 0 },
-      y: { type: 'linear', title: { display: true, text: 'Total Pressure (Pa)', color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { bottom: 10 } }, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: {}, beginAtZero: true, min: 0 }
+      x: { type: 'linear', position: 'bottom', title: { display: true, text: 'Flow Rate (m3/s)', color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { top: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: {}, beginAtZero: true, min: 0 },
+      y: { type: 'linear', title: { display: true, text: 'Total Pressure (Pa)', color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { bottom: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: {}, beginAtZero: true, min: 0 }
     },
     interaction: { intersect: false, mode: 'nearest' },
     elements: { point: { zIndex: 2 }, line: { tension: 0.4, cubicInterpolationMode: 'monotone' } }
+  };
+
+  const staticPressureChartOptions = {
+    ...chartOptions,
+    plugins: {
+      ...chartOptions.plugins,
+      title: { ...chartOptions.plugins.title, text: 'Flow Rate vs Static Pressure (m3/s / Pa)' },
+      tooltip: { ...chartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} m3/s`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)} Pa`]; } } }
+    },
+    scales: {
+      ...chartOptions.scales,
+      y: { ...chartOptions.scales.y, title: { ...chartOptions.scales.y.title, text: 'Static Pressure (Pa)' } }
+    }
   };
 
   const powerChartOptions = {
@@ -438,6 +519,37 @@ const FlowSearch = () => {
   } : (closestPoint ? {
     datasets: [
       { label: 'Working Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.totalPressure) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
+    ]
+  } : null);
+
+  const staticPressureChartData = (curvePoints && curvePoints.length > 0) ? {
+    datasets: [
+      {
+        label: 'Static Pressure Curve',
+        data: curvePoints.map(p => ({ x: parseFloat(p.flowRate), y: parseFloat(p.staticPressure || 0) })),
+        backgroundColor: 'rgba(168,85,247,0.3)',
+        borderColor: 'rgb(168,85,247)',
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 3,
+        pointBackgroundColor: 'rgb(168,85,247)',
+        pointBorderColor: 'rgba(168,85,247,0.7)',
+        showLine: true,
+        tension: 0.35,
+      },
+      ...(closestPoint ? [{
+        label: 'Working Point',
+        data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.staticPressure || 0) }],
+        backgroundColor: 'rgb(251,146,60)',
+        borderColor: 'rgb(234,88,12)',
+        borderWidth: 3,
+        pointRadius: 6,
+        showLine: false,
+      }] : [])
+    ]
+  } : (closestPoint ? {
+    datasets: [
+      { label: 'Working Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.staticPressure || 0) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
     ]
   } : null);
 
@@ -515,62 +627,115 @@ const FlowSearch = () => {
       // Prefer fetch->blob->FileReader for same-origin built assets
       const loadImageAsBase64 = (imageSrc) => {
         const resolved = resolveAnyImage(imageSrc) || imageSrc;
+        console.log('Loading image for PDF:', resolved);
+        
         return new Promise(async (resolve, reject) => {
           try {
-            const resp = await fetch(resolved, { cache: 'no-store' });
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            // First attempt: Direct fetch with blob conversion
+            console.log('Attempting fetch for:', resolved);
+            const resp = await fetch(resolved, { 
+              cache: 'no-store',
+              mode: 'cors',
+              credentials: 'same-origin'
+            });
+            
+            if (!resp.ok) {
+              console.warn(`HTTP ${resp.status} for ${resolved}`);
+              throw new Error(`HTTP ${resp.status}`);
+            }
+            
             const contentType = resp.headers.get('content-type') || '';
+            console.log('Content type:', contentType);
+            
             if (!contentType.toLowerCase().startsWith('image/')) {
+              console.warn(`Non-image content-type: ${contentType} for ${resolved}`);
               throw new Error(`Non-image content-type: ${contentType}`);
             }
+            
             const blob = await resp.blob();
+            console.log('Blob size:', blob.size);
+            
             const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = (e) => reject(e);
+            reader.onloadend = () => {
+              console.log('Successfully loaded image via fetch');
+              resolve(reader.result);
+            };
+            reader.onerror = (e) => {
+              console.error('FileReader error:', e);
+              reject(e);
+            };
             reader.readAsDataURL(blob);
             return;
-          } catch (err) {
-            // Fallback to <img> + canvas
-            const tryImg = (src) => new Promise((res, rej) => {
-              try {
+            
+          } catch (fetchError) {
+            console.warn('Fetch failed, trying canvas method:', fetchError);
+            
+            // Fallback: Canvas method with multiple URL attempts
+            const tryCanvasMethod = async (src) => {
+              return new Promise((res, rej) => {
                 const img = new Image();
                 img.crossOrigin = 'anonymous';
+                
                 img.onload = () => {
                   try {
+                    console.log('Image loaded, creating canvas');
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
-                    canvas.width = img.naturalWidth;
-                    canvas.height = img.naturalHeight;
+                    canvas.width = img.naturalWidth || img.width;
+                    canvas.height = img.naturalHeight || img.height;
+                    
+                    console.log('Canvas size:', canvas.width, 'x', canvas.height);
                     ctx.drawImage(img, 0, 0);
+                    
                     const dataURL = canvas.toDataURL('image/png');
+                    console.log('Canvas conversion successful');
                     res(dataURL);
-                  } catch (e) {
-                    rej(e);
+                  } catch (canvasError) {
+                    console.error('Canvas error:', canvasError);
+                    rej(canvasError);
                   }
                 };
-                img.onerror = (e) => rej(e);
+                
+                img.onerror = (imgError) => {
+                  console.error('Image load error:', imgError);
+                  rej(imgError);
+                };
+                
+                console.log('Setting image src:', src);
                 img.src = src;
-              } catch (e2) {
-                rej(e2);
-              }
-            });
+              });
+            };
+
             try {
-              // First attempt with resolved
-              const data = await tryImg(resolved);
-              resolve(data);
+              // Try with resolved URL
+              const dataURL = await tryCanvasMethod(resolved);
+              resolve(dataURL);
             } catch (e1) {
+              console.warn('Canvas method with resolved URL failed:', e1);
+              
               try {
-                // Second attempt: if looks like a filename, try from public root
-                const needle = String(imageSrc).split('/').pop();
-                if (needle) {
-                  const publicUrl = `/${needle}`;
-                  const data2 = await tryImg(publicUrl);
-                  resolve(data2);
+                // Try with original imageSrc
+                if (imageSrc !== resolved) {
+                  console.log('Trying with original imageSrc:', imageSrc);
+                  const dataURL2 = await tryCanvasMethod(imageSrc);
+                  resolve(dataURL2);
                   return;
                 }
+                
+                // Try constructing public URL
+                const filename = String(imageSrc).split('/').pop();
+                if (filename && !filename.includes('http')) {
+                  const publicUrl = `/${filename}`;
+                  console.log('Trying public URL:', publicUrl);
+                  const dataURL3 = await tryCanvasMethod(publicUrl);
+                  resolve(dataURL3);
+                  return;
+                }
+                
                 throw e1;
               } catch (e2) {
-                reject(e2);
+                console.error('All image loading methods failed:', e2);
+                reject(new Error(`Failed to load image: ${resolved}. Original error: ${fetchError.message}`));
               }
             }
           }
@@ -637,10 +802,16 @@ const FlowSearch = () => {
 
       // Header with logo and company details
       try {
+        console.log('Loading logo for PDF:', logoImg);
         const logoBase64 = await loadImageAsBase64(logoImg);
+        console.log('Logo loaded successfully');
         doc.addImage(logoBase64, 'PNG', 30, y, 200, 70);
       } catch (error) {
-        console.log('Logo not loaded:', error);
+        console.error('Logo loading failed:', error);
+        // Add text fallback
+        doc.setFontSize(16);
+        doc.setTextColor('#1e3a8a');
+        doc.text('NOBEL ENGINEERING', 30, y + 35);
       }
 
       doc.setFontSize(11);
@@ -669,7 +840,14 @@ const FlowSearch = () => {
       const selectedRpm = selected?.rpm?.rpm ?? '';
       const info = [
         `Category: ${fanCategory || '-'}`,
-        `Axial Type: ${axialType || '-'}`,
+        ...(fanCategory === 'axial' ? [
+          `Axial Type: ${axialType || '-'}`,
+        ] : []),
+        ...(fanCategory === 'centrifugal' ? [
+          `Pressure Type: ${pressureClass || '-'}`,
+          `Configuration: ${lowConfig ? lowConfig.toUpperCase() : '-'}`,
+          `Centrifugal Type: ${series || '-'}`,
+        ] : []),
         `Drive Type: ${driveType || '-'}`,
         `Model: ${selectedModel || '-'}`,
         `RPM: ${selectedRpm || '-'}`,
@@ -677,16 +855,32 @@ const FlowSearch = () => {
       const infoStartY = y;
       info.forEach((t) => { doc.text(t, 40, y); y += 16; });
 
-      // Add selected axial type image
+      // Add selected product type image (axial or centrifugal)
       try {
-        const selAxial = axialTypes.find(t => t.code === axialType);
-        if (selAxial?.img) {
-          const axialImageBase64 = await loadImageAsBase64(selAxial.img);
+        let productImage = null;
+        let productName = '';
+        
+        if (fanCategory === 'axial') {
+          const selAxial = axialTypes.find(t => t.code === axialType);
+          productImage = selAxial?.img;
+          productName = selAxial?.name || axialType;
+        } else if (fanCategory === 'centrifugal') {
+          const selCentrifugal = seriesCards.find(c => c.code === series);
+          productImage = selCentrifugal?.img;
+          productName = selCentrifugal?.name || series;
+        }
+        
+        if (productImage) {
+          console.log(`Loading ${fanCategory} product image for PDF:`, productImage);
+          const productImageBase64 = await loadImageAsBase64(productImage);
+          console.log(`${fanCategory} product image loaded successfully`);
           
           const img = new Image();
-          img.src = axialImageBase64;
-          await new Promise((resolve) => {
+          img.src = productImageBase64;
+          await new Promise((resolve, reject) => {
             img.onload = resolve;
+            img.onerror = reject;
+            setTimeout(reject, 5000); // 5 second timeout
           });
           
           const naturalW = img.naturalWidth || 200;
@@ -699,11 +893,18 @@ const FlowSearch = () => {
           const imgX = pageWidth - 40 - imgW;
           const imgY = infoStartY - 4;
           
-          doc.addImage(axialImageBase64, 'PNG', imgX, imgY, imgW, imgH);
+          doc.addImage(productImageBase64, 'PNG', imgX, imgY, imgW, imgH);
           y = Math.max(y, imgY + imgH + 8);
+        } else {
+          console.warn(`No ${fanCategory} product image found for:`, fanCategory === 'axial' ? axialType : series);
         }
       } catch (error) {
-        console.log('Axial type image not loaded:', error);
+        console.error(`${fanCategory} product image loading failed:`, error);
+        // Add text fallback
+        doc.setFontSize(10);
+        doc.setTextColor('#64748B');
+        const productType = fanCategory === 'axial' ? axialType : series;
+        doc.text(`Image not available for ${productType}`, pageWidth - 200, infoStartY + 20);
       }
       y += 8;
 
@@ -834,14 +1035,18 @@ const FlowSearch = () => {
               // Right column: Variant image
               if (variant.image) {
                 try {
+                  console.log('Loading variant image for PDF:', variant.image);
                   const resolvedVariantUrl = resolveAnyImage(variant.image) || variant.image;
+                  console.log('Resolved variant URL:', resolvedVariantUrl);
                   const variantImageBase64 = await loadImageAsBase64(resolvedVariantUrl);
+                  console.log('Variant image loaded successfully');
                   
                   const img = new Image();
                   img.src = variantImageBase64;
                   await new Promise((resolve, reject) => {
                     img.onload = resolve;
                     img.onerror = reject;
+                    setTimeout(reject, 5000); // 5 second timeout
                   });
                   
                   const naturalW = img.naturalWidth || 400;
@@ -862,8 +1067,8 @@ const FlowSearch = () => {
                   // Update y position to the bottom of the tallest column
                   y = Math.max(y, imageY + imgH + 20);
                 } catch (error) {
-                  console.log(`Variant image ${variant.name} not loaded:`, error);
-                  // إضافة نص بديل عند فشل تحميل الصورة
+                  console.error(`Variant image ${variant.name} loading failed:`, error);
+                  // Add text fallback
                   doc.setFontSize(10);
                   doc.setTextColor('#64748B');
                   doc.text(`Image not available for ${variant.name}`, rightColumnX, startY + 20);
@@ -925,13 +1130,18 @@ const FlowSearch = () => {
             // Right column: Dimensions image
             if (dimensionsData.image) {
               try {
+                console.log('Loading dimensions image for PDF:', dimensionsData.image);
                 const resolvedUrl = resolveAnyImage(dimensionsData.image) || dimensionsData.image;
+                console.log('Resolved dimensions URL:', resolvedUrl);
                 const dimensionsImageBase64 = await loadImageAsBase64(resolvedUrl);
+                console.log('Dimensions image loaded successfully');
                 
                 const img = new Image();
                 img.src = dimensionsImageBase64;
-                await new Promise((resolve) => {
+                await new Promise((resolve, reject) => {
                   img.onload = resolve;
+                  img.onerror = reject;
+                  setTimeout(reject, 5000); // 5 second timeout
                 });
                 
                 const naturalW = img.naturalWidth || 400;
@@ -948,7 +1158,11 @@ const FlowSearch = () => {
                 
                 y = Math.max(y, imageY + imgH + 20);
               } catch (error) {
-                console.log('Dimensions image not loaded:', error);
+                console.error('Dimensions image loading failed:', error);
+                // Add text fallback
+                doc.setFontSize(10);
+                doc.setTextColor('#64748B');
+                doc.text('Dimensions image not available', rightColumnX, startY + 40);
               }
             }
           }
@@ -1099,7 +1313,7 @@ const FlowSearch = () => {
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Centrifugal Type</label>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {seriesCards.map(card => (
+                    {currentSeriesCards.map(card => (
                       <button key={card.code} type="button" onClick={()=>setSeries(card.code)} className={`border rounded-lg p-2 hover:shadow transition ${series===card.code ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'} ${(!pressureClass || (pressureClass==='low' && !lowConfig)) ? 'opacity-50 pointer-events-none' : ''}`}>
                         {card.img ? (
                           <img src={card.img} alt={card.name} className="w-full h-20 object-contain" />
@@ -1117,7 +1331,7 @@ const FlowSearch = () => {
                     <div className="mt-2 rounded-xl border border-[#E5EDFF] bg-white p-4">
                       <div className="text-[#1F3B73] text-sm font-semibold mb-3">{`${series} - Centrifugal Type`}</div>
                       <div className="flex items-center gap-4">
-                        {(() => { const card = seriesCards.find(c => c.code === series); return card?.img ? (
+                        {(() => { const card = currentSeriesCards.find(c => c.code === series); return card?.img ? (
                           <img src={card.img} alt={card.name} className="w-full max-w-md h-56 object-contain mx-auto" />
                         ) : null; })()}
                       </div>
@@ -1188,12 +1402,37 @@ const FlowSearch = () => {
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
               <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Results</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {apiResults.map((r, idx) => (
-                  <button key={idx} onClick={() => setSelectedIndex(idx)} className={`text-left p-3 rounded border ${selectedIndex===idx ? 'border-[#93C5FD] ring-2 ring-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
-                    <div className="text-[#1E3A8A] font-medium">Model: {r.model?.name} - {axialType}</div>
-                    <div className="text-[#334155] text-sm">RPM: {r.rpm?.rpm}</div>
-                  </button>
-                ))}
+                {apiResults.map((r, idx) => {
+                  const rpmId = r?.rpm?._id;
+                  const isLoading = loadingPoints[rpmId];
+                  const hasPoints = modelPoints[rpmId]?.length > 0;
+                  
+                  return (
+                    <button 
+                      key={idx} 
+                      onClick={() => handleModelSelect(idx)} 
+                      className={`text-left p-3 rounded border transition-all ${selectedIndex===idx ? 'border-[#93C5FD] ring-2 ring-[#93C5FD]' : 'border-[#E5EDFF]'}`}
+                    >
+                      <div className="text-[#1E3A8A] font-medium">Model: {r.model?.name} - {axialType}</div>
+                      <div className="text-[#334155] text-sm">RPM: {r.rpm?.rpm}</div>
+                      <div className="flex items-center gap-2 mt-2">
+                        {isLoading ? (
+                          <div className="flex items-center gap-1 text-xs text-[#64748B]">
+                            <span className="w-3 h-3 border-2 border-[#93C5FD] border-t-transparent rounded-full animate-spin"></span>
+                            Loading curve...
+                          </div>
+                        ) : hasPoints ? (
+                          <div className="text-xs text-green-600 flex items-center gap-1">
+                            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                            Curve loaded
+                          </div>
+                        ) : selectedIndex === idx ? (
+                          <div className="text-xs text-[#64748B]">Click to load curve</div>
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1252,39 +1491,92 @@ const FlowSearch = () => {
                 </div>
 
                 <div className="grid grid-cols-1 gap-8">
-                      {/* Pressure Chart */}
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                    <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Pressure Chart</h3>
-                    <div className="h-80">
-                          <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
-                        </div>
-                      </div>
-                      
-                      {/* Power/Efficiency Chart */}
-                      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                        <div className="flex items-center justify-between mb-4">
-                          <h3 className="text-xl font-semibold text-[#1E3A8A]">{chartView === 'power' ? 'Power Chart' : 'Efficiency Chart'}</h3>
-                          <div className="inline-flex bg-[#F1F5FF] rounded-lg border border-[#E5EDFF] overflow-hidden">
-                            <button type="button" onClick={()=>setChartView('power')} className={`px-3 py-1 text-sm ${chartView==='power' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Power</button>
-                            <button type="button" onClick={()=>setChartView('efficiency')} className={`px-3 py-1 text-sm ${chartView==='efficiency' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Efficiency</button>
-                          </div>
-                        </div>
-                        <div className="h-80">
-                          {chartView === 'power' ? (
-                            <Scatter ref={powerChartRef} data={powerChartData} options={powerChartOptions} />
-                          ) : (
-                            <Scatter ref={efficiencyChartRef} data={efficiencyChartData} options={efficiencyChartOptions} />
-                          )}
-                          {/* Hidden counterpart to ensure refs are available for export */}
-                          <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
-                            {chartView === 'power' ? (
-                              <Scatter ref={efficiencyChartRef} data={efficiencyChartData || { datasets: [] }} options={efficiencyChartOptions} />
-                            ) : (
-                              <Scatter ref={powerChartRef} data={powerChartData || { datasets: [] }} options={powerChartOptions} />
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                      {/* Charts Section */}
+                      {(() => {
+                        const rpmId = selected?.rpm?._id;
+                        const isLoadingPoints = loadingPoints[rpmId];
+                        const hasPoints = curvePoints.length > 0;
+                        
+                        if (isLoadingPoints) {
+                          return (
+                            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
+                              <div className="flex items-center justify-center py-12">
+                                <div className="flex items-center gap-3">
+                                  <span className="w-6 h-6 border-2 border-[#93C5FD] border-t-transparent rounded-full animate-spin"></span>
+                                  <span className="text-[#64748B]">Loading curve data...</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+                        
+                        if (!hasPoints) {
+                          return (
+                            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
+                              <div className="text-center py-12">
+                                <div className="text-[#64748B] text-lg mb-2">No Curve Data</div>
+                                <div className="text-[#9CA3AF] text-sm">Click on a model to load curve data</div>
+                              </div>
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <>
+                            {/* Pressure Chart */}
+                            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xl font-semibold text-[#1E3A8A]">{pressureChartView === 'total' ? 'Total Pressure Chart' : 'Static Pressure Chart'}</h3>
+                                <div className="inline-flex bg-[#F1F5FF] rounded-lg border border-[#E5EDFF] overflow-hidden">
+                                  <button type="button" onClick={()=>setPressureChartView('total')} className={`px-3 py-1 text-sm ${pressureChartView==='total' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Total</button>
+                                  <button type="button" onClick={()=>setPressureChartView('static')} className={`px-3 py-1 text-sm ${pressureChartView==='static' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Static</button>
+                                </div>
+                              </div>
+                              <div className="h-80">
+                                {pressureChartView === 'total' ? (
+                                  <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
+                                ) : (
+                                  <Scatter ref={staticPressureChartRef} data={staticPressureChartData} options={staticPressureChartOptions} />
+                                )}
+                                {/* Hidden counterpart to ensure refs are available for export */}
+                                <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
+                                  {pressureChartView === 'total' ? (
+                                    <Scatter ref={staticPressureChartRef} data={staticPressureChartData || { datasets: [] }} options={staticPressureChartOptions} />
+                                  ) : (
+                                    <Scatter ref={pressureChartRef} data={pressureChartData || { datasets: [] }} options={chartOptions} />
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Power/Efficiency Chart */}
+                            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
+                              <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xl font-semibold text-[#1E3A8A]">{chartView === 'power' ? 'Power Chart' : 'Efficiency Chart'}</h3>
+                                <div className="inline-flex bg-[#F1F5FF] rounded-lg border border-[#E5EDFF] overflow-hidden">
+                                  <button type="button" onClick={()=>setChartView('power')} className={`px-3 py-1 text-sm ${chartView==='power' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Power</button>
+                                  <button type="button" onClick={()=>setChartView('efficiency')} className={`px-3 py-1 text-sm ${chartView==='efficiency' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Efficiency</button>
+                                </div>
+                              </div>
+                              <div className="h-80">
+                                {chartView === 'power' ? (
+                                  <Scatter ref={powerChartRef} data={powerChartData} options={powerChartOptions} />
+                                ) : (
+                                  <Scatter ref={efficiencyChartRef} data={efficiencyChartData} options={efficiencyChartOptions} />
+                                )}
+                                {/* Hidden counterpart to ensure refs are available for export */}
+                                <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
+                                  {chartView === 'power' ? (
+                                    <Scatter ref={efficiencyChartRef} data={efficiencyChartData || { datasets: [] }} options={efficiencyChartOptions} />
+                                  ) : (
+                                    <Scatter ref={powerChartRef} data={powerChartData || { datasets: [] }} options={powerChartOptions} />
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
@@ -1434,8 +1726,11 @@ const FlowSearch = () => {
                     
                     {/* Hidden Charts for PDF Export - Always render these charts but hide them */}
                     <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
-                      {/* Pressure Chart */}
+                      {/* Total Pressure Chart */}
                       <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
+                      
+                      {/* Static Pressure Chart */}
+                      <Scatter ref={staticPressureChartRef} data={staticPressureChartData} options={staticPressureChartOptions} />
                       
                       {/* Power Chart */}
                       <Scatter ref={powerChartRef} data={powerChartData} options={powerChartOptions} />

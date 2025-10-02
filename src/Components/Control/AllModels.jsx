@@ -11,12 +11,22 @@ const AllModels = () => {
     factor: 0,
     startRpmNumber: 0,
     endRpmNumber: 0,
+    // Centrifugal-only fields
+    pressureType: '',
+    configurationType: '',
+    centrifugalType: '',
     points: [
       { rpm: 0, flowRate: 0, totalPressure: 0, efficiency: 0, lpa: 0 }
     ]
   })
   const [originalData, setOriginalData] = useState(null)
-  const [filters, setFilters] = useState({ axial: true, centrifugal: true })
+  const [filters, setFilters] = useState({ 
+    axial: true, 
+    centrifugal: true,
+    // Centrifugal sub-filters
+    pressureTypes: { low: true, medium: true, high: true },
+    centrifugalTypes: { NBR: true, NBS: true, NBRS: true, NC: true, NBXI: true, 'NBR-D': true, 'NBS-D': true, NPD: true, NPE: true, NPF: true }
+  })
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 9
   const [confirmDelete, setConfirmDelete] = useState({ open: false, id: null, name: '' })
@@ -84,20 +94,31 @@ const AllModels = () => {
     closeDeleteConfirm()
   }
 
-  const normalizeModelToPayload = (model) => ({
-    type: model.type,
-    name: model.name,
-    factor: Number(model.factor ?? 0),
-    startRpmNumber: Number(model.startRpmNumber ?? 0),
-    endRpmNumber: Number(model.endRpmNumber ?? 0),
-    points: (model.points || []).map(p => ({
-      rpm: Number(p.rpm),
-      flowRate: Number(p.flowRate),
-      totalPressure: Number(p.totalPressure),
-      efficiency: Number(p.efficiency),
-      lpa: Number(p.lpa)
-    }))
-  })
+  const normalizeModelToPayload = (model) => {
+    const basePayload = {
+      type: model.type,
+      name: model.name,
+      factor: Number(model.factor ?? 0),
+      startRpmNumber: Number(model.startRpmNumber ?? 0),
+      endRpmNumber: Number(model.endRpmNumber ?? 0),
+      points: (model.points || []).map(p => ({
+        rpm: Number(p.rpm),
+        flowRate: Number(p.flowRate),
+        totalPressure: Number(p.totalPressure),
+        efficiency: Number(p.efficiency),
+        lpa: Number(p.lpa)
+      }))
+    }
+
+    // Add centrifugal fields if model is centrifugal
+    if (model.type === 'centrifugal') {
+      basePayload.pressureType = model.pressureType || ''
+      basePayload.configurationType = model.configurationType || ''
+      basePayload.centrifugalType = model.centrifugalType || ''
+    }
+
+    return basePayload
+  }
 
   const handleEdit = (model) => {
     setEditingModel(model)
@@ -132,10 +153,22 @@ const AllModels = () => {
     setFormData({ ...formData, points: newPoints })
   }
 
+  const getCentrifugalTypeOptions = () => {
+    if (formData.type !== 'centrifugal') return []
+    if (formData.pressureType === 'low') {
+      if (formData.configurationType === 'SISW') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI']
+      if (formData.configurationType === 'DIDW') return ['NBR-D', 'NBS-D']
+      return []
+    }
+    if (formData.pressureType === 'medium') return ['NPD', 'NPE']
+    if (formData.pressureType === 'high') return ['NPF']
+    return []
+  }
+
   const buildDiff = (orig, updated) => {
     if (!orig) return updated
     const diff = {}
-    const keys = ['type','name','factor','startRpmNumber','endRpmNumber','points']
+    const keys = ['type','name','factor','startRpmNumber','endRpmNumber','points','pressureType','configurationType','centrifugalType']
     keys.forEach(k => {
       const o = orig[k]
       const u = updated[k]
@@ -153,7 +186,7 @@ const AllModels = () => {
   const handleUpdate = async (e) => {
     e.preventDefault()
     if (!editingModel) return
-    const payload = {
+    const basePayload = {
       type: formData.type,
       name: formData.name,
       factor: Number(formData.factor),
@@ -167,6 +200,15 @@ const AllModels = () => {
         lpa: Number(p.lpa)
       }))
     }
+
+    // Add centrifugal fields if model is centrifugal
+    const centrifugalExtras = (formData.type === 'centrifugal') ? {
+      pressureType: formData.pressureType || undefined,
+      configurationType: formData.pressureType === 'low' ? (formData.configurationType || undefined) : undefined,
+      centrifugalType: formData.centrifugalType || undefined,
+    } : {}
+
+    const payload = { ...basePayload, ...centrifugalExtras }
     const id = editingModel?._id || editingModel?.id
     if (!id) return
 
@@ -189,6 +231,19 @@ const AllModels = () => {
     }
   }
 
+  const handleCentrifugalChange = (e) => {
+    const { name, value } = e.target
+    if (name === 'pressureType') {
+      // Reset dependent fields when pressure type changes
+      setFormData({ ...formData, pressureType: value, configurationType: '', centrifugalType: '' })
+    } else if (name === 'configurationType') {
+      // Reset centrifugal type when configuration changes
+      setFormData({ ...formData, configurationType: value, centrifugalType: '' })
+    } else {
+      setFormData({ ...formData, [name]: value })
+    }
+  }
+
   const handleFilterChange = (type) => {
     setFilters(prev => {
       const next = { ...prev, [type]: !prev[type] }
@@ -197,10 +252,29 @@ const AllModels = () => {
     })
   }
 
+  const handleCentrifugalFilterChange = (filterType, value) => {
+    setFilters(prev => ({
+      ...prev,
+      [filterType]: {
+        ...prev[filterType],
+        [value]: !prev[filterType][value]
+      }
+    }))
+    setPage(1)
+  }
+
   const filtered = models.filter(m => {
     const t = (m.type || '').toLowerCase()
     if (t === 'axial') return filters.axial
-    if (t === 'centrifugal') return filters.centrifugal
+    if (t === 'centrifugal') {
+      if (!filters.centrifugal) return false
+      
+      // Apply centrifugal sub-filters
+      if (m.pressureType && !filters.pressureTypes[m.pressureType]) return false
+      if (m.centrifugalType && !filters.centrifugalTypes[m.centrifugalType]) return false
+      
+      return true
+    }
     return true
   })
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -256,6 +330,44 @@ const AllModels = () => {
         </label>
       </div>
 
+      {filters.centrifugal && (
+        <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <h3 className="text-sm font-medium text-[#1E3A8A] mb-3">Centrifugal Filters</h3>
+          
+          <div className="mb-3">
+            <h4 className="text-xs font-medium text-[#334155] mb-2">Pressure Types:</h4>
+            <div className="flex flex-wrap gap-2">
+              {Object.keys(filters.pressureTypes).map(pressureType => (
+                <label key={pressureType} className="inline-flex items-center gap-1 text-xs text-[#334155]">
+                  <input
+                    type="checkbox"
+                    checked={filters.pressureTypes[pressureType]}
+                    onChange={() => handleCentrifugalFilterChange('pressureTypes', pressureType)}
+                  />
+                  <span className="capitalize">{pressureType}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-medium text-[#334155] mb-2">Centrifugal Types:</h4>
+            <div className="flex flex-wrap gap-2">
+              {Object.keys(filters.centrifugalTypes).map(centrifugalType => (
+                <label key={centrifugalType} className="inline-flex items-center gap-1 text-xs text-[#334155]">
+                  <input
+                    type="checkbox"
+                    checked={filters.centrifugalTypes[centrifugalType]}
+                    onChange={() => handleCentrifugalFilterChange('centrifugalTypes', centrifugalType)}
+                  />
+                  <span>{centrifugalType}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {editingModel && (
         <div className="relative mb-4 p-4 border rounded bg-white border-[#E5EDFF]">
           <span className="absolute inset-x-0 top-0 h-1 rounded-t-lg bg-[#FDBA74]"></span>
@@ -266,7 +378,13 @@ const AllModels = () => {
               <select
                 name="type"
                 value={formData.type}
-                onChange={handleInputChange}
+                onChange={(e) => {
+                  handleInputChange(e)
+                  // Reset centrifugal fields when type changes
+                  if (e.target.value !== 'centrifugal') {
+                    setFormData(prev => ({ ...prev, pressureType: '', configurationType: '', centrifugalType: '' }))
+                  }
+                }}
                 className="border p-2 w-full rounded bg-white text-[#1F3B73] border-[#C7DAFF]"
                 required
               >
@@ -275,6 +393,61 @@ const AllModels = () => {
                 <option value="centrifugal">Centrifugal</option>
               </select>
             </div>
+
+            {formData.type === 'centrifugal' && (
+              <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <h3 className="text-lg font-medium text-[#1E3A8A] mb-3">Centrifugal Properties</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block mb-1 text-[#334155]">Pressure Type:</label>
+                    <select
+                      name="pressureType"
+                      value={formData.pressureType || ''}
+                      onChange={handleCentrifugalChange}
+                      className="border p-2 w-full rounded bg-white text-[#1F3B73] border-[#C7DAFF]"
+                    >
+                      <option value="">Select pressure type</option>
+                      <option value="low">Low Pressure</option>
+                      <option value="medium">Medium Pressure</option>
+                      <option value="high">High Pressure</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[#334155]">Configuration Type:</label>
+                    <select
+                      name="configurationType"
+                      value={formData.configurationType || ''}
+                      onChange={handleCentrifugalChange}
+                      disabled={formData.pressureType !== 'low'}
+                      className="border p-2 w-full rounded bg-white text-[#1F3B73] border-[#C7DAFF] disabled:bg-gray-100"
+                    >
+                      <option value="">Select configuration</option>
+                      <option value="SISW">SISW</option>
+                      <option value="DIDW">DIDW</option>
+                    </select>
+                    {formData.pressureType === 'low' && (
+                      <p className="mt-1 text-xs text-gray-500">SISW: NBR, NBS, NBRS, NC, NBXI — DIDW: NBR-D, NBS-D</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[#334155]">Centrifugal Type:</label>
+                    <select
+                      name="centrifugalType"
+                      value={formData.centrifugalType || ''}
+                      onChange={handleCentrifugalChange}
+                      disabled={!formData.pressureType || (formData.pressureType === 'low' && !formData.configurationType)}
+                      className="border p-2 w-full rounded bg-white text-[#1F3B73] border-[#C7DAFF] disabled:bg-gray-100"
+                    >
+                      <option value="">Select centrifugal type</option>
+                      {getCentrifugalTypeOptions().map(opt => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="mb-2">
               <label className="block mb-1 text-[#334155]">Name:</label>
               <input
@@ -447,6 +620,32 @@ const AllModels = () => {
                 <span className="absolute inset-x-0 top-0 h-1 rounded-t-lg bg-[#FDBA74]"></span>
                 <h3 className="text-lg font-semibold text-[#1E3A8A]">{model.name}</h3>
                 <p className="text-[#64748B] capitalize">{model.type}</p>
+                
+                {model.type === 'centrifugal' && (
+                  <div className="mt-2 p-2 bg-white/60 rounded border border-blue-200">
+                    <div className="grid grid-cols-1 gap-1 text-xs">
+                      {model.pressureType && (
+                        <div className="flex justify-between">
+                          <span className="text-[#334155] font-medium">Pressure:</span>
+                          <span className="text-[#1E3A8A] capitalize">{model.pressureType}</span>
+                        </div>
+                      )}
+                      {model.configurationType && (
+                        <div className="flex justify-between">
+                          <span className="text-[#334155] font-medium">Configuration:</span>
+                          <span className="text-[#1E3A8A]">{model.configurationType}</span>
+                        </div>
+                      )}
+                      {model.centrifugalType && (
+                        <div className="flex justify-between">
+                          <span className="text-[#334155] font-medium">Type:</span>
+                          <span className="text-[#1E3A8A] font-semibold">{model.centrifugalType}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs text-[#334155] mb-1">Factor</label>
