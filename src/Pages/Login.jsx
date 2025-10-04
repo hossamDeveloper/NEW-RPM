@@ -137,11 +137,11 @@ const Login = () => {
             </motion.button>
           </form>
 
-          <div className="mt-4 text-center text-[#64748B] text-sm">
+          {/* <div className="mt-4 text-center text-[#64748B] text-sm">
             <p>Admin Credentials:</p>
             <p>Username: hossam</p>
             <p>Password: Aa11111$</p>
-          </div>
+          </div> */}
         </div>
       </motion.div>
     </div>
