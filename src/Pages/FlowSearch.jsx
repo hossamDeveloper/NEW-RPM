@@ -48,6 +48,7 @@ const FlowSearch = () => {
   const [pressureChartView, setPressureChartView] = useState('total'); // 'total' | 'static'
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfCharts, setPdfCharts] = useState({ pressure: false, power: true, efficiency: false });
+  const [pdfPressureChartType, setPdfPressureChartType] = useState('total'); // 'total' | 'static'
   const [activeTab, setActiveTab] = useState('configuration'); // 'configuration' | 'dimensions'
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfError, setPdfError] = useState('');
@@ -507,7 +508,7 @@ const FlowSearch = () => {
   const pressureChartData = (curvePoints && curvePoints.length > 0) ? {
     datasets: [
       {
-        label: 'Curve',
+        label: 'Total Pressure Curve',
         data: curvePoints.map(p => ({ x: parseFloat(p.flowRate), y: parseFloat(p.totalPressure) })),
         backgroundColor: 'rgba(59,130,246,0.3)',
         borderColor: 'rgb(59,130,246)',
@@ -1226,7 +1227,11 @@ const FlowSearch = () => {
         }
       };
 
-      if (pdfCharts.pressure) addChart('Pressure Chart', pressureChartRef);
+      if (pdfCharts.pressure) {
+        const chartTitle = pdfPressureChartType === 'total' ? 'Total Pressure Chart' : 'Static Pressure Chart';
+        const chartRef = pdfPressureChartType === 'total' ? pressureChartRef : staticPressureChartRef;
+        addChart(chartTitle, chartRef);
+      }
       if (pdfCharts.power) addChart('Power Chart', powerChartRef);
       if (pdfCharts.efficiency) addChart('Efficiency Chart', efficiencyChartRef);
 
@@ -1795,6 +1800,33 @@ const FlowSearch = () => {
                   <input type="checkbox" checked={pdfCharts.pressure} onChange={(e)=>setPdfCharts(prev=>({...prev, pressure: e.target.checked}))} />
                   <span>Include Pressure Chart</span>
                 </label>
+                {pdfCharts.pressure && (
+                  <div className="ml-6 space-y-2">
+                    <div className="text-sm font-medium text-[#475569]">Pressure Chart Type:</div>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2">
+                        <input 
+                          type="radio" 
+                          name="pdfPressureType" 
+                          value="total" 
+                          checked={pdfPressureChartType === 'total'} 
+                          onChange={(e)=>setPdfPressureChartType(e.target.value)} 
+                        />
+                        <span>Total Pressure</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input 
+                          type="radio" 
+                          name="pdfPressureType" 
+                          value="static" 
+                          checked={pdfPressureChartType === 'static'} 
+                          onChange={(e)=>setPdfPressureChartType(e.target.value)} 
+                        />
+                        <span>Static Pressure</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked={pdfCharts.power} onChange={(e)=>setPdfCharts(prev=>({...prev, power: e.target.checked}))} />
                   <span>Include Power Chart</span>
