@@ -70,6 +70,9 @@ const FlowCalculate = () => {
     e: 0,
   });
 
+  // Track RPM precision to avoid floating-point artifacts (e.g., 1499.3200000000002)
+  const [rpmPrecision, setRpmPrecision] = useState(0);                              //up
+
   const { data: modelsData, isLoading: qLoadingModels, error: qModelsError } = useQuery({
     queryKey: ['models', fanType],
     queryFn: async () => {
@@ -549,28 +552,33 @@ const FlowCalculate = () => {
   const generateNextRpmPoints = (basePoints, currentRpm, newRpm) => {
     const rpmRatio = newRpm / currentRpm;
     const pressureRatio = Math.pow(rpmRatio, 2);
-    const newPoints = [];
     const velocityConstant = 4 / (Math.PI * Math.pow(diameter, 2));
     const lpaDelta = 50 * Math.log10(rpmRatio);
+    const newPoints = new Array(1000);                                //up
+    // Pre-parse base points once for performance
     for (let i = 0; i < 1000; i++) {
-      const basePoint = basePoints[i];
-      const flowRate = parseFloat(basePoint.flowRate) * rpmRatio;
-      const totalPressure = parseFloat(basePoint.totalPressure) * pressureRatio;
-      const efficiency = parseFloat(basePoint.efficiency);
-      const z = parseFloat(basePoint.lpa || 0);
+      const bp = basePoints[i];                                             //up       
+      const baseFlow = Number(bp.flowRate);
+      const basePressure = Number(bp.totalPressure);
+      const baseEfficiency = Number(bp.efficiency);
+      const baseLpa = Number(bp.lpa || 0);
+      const flowRate = baseFlow * rpmRatio;
+      const totalPressure = basePressure * pressureRatio;
+      const efficiency = baseEfficiency;                                             //up
       const velocity = flowRate * velocityConstant;
       const efficiencyDecimal = efficiency / 100;
-      const brakePower = (flowRate * totalPressure) / (efficiencyDecimal * 1000);
-      const lpa = z + lpaDelta;
-      newPoints.push({
-        rpm: newRpm,
+      const brakePower = efficiencyDecimal > 0 ? (flowRate * totalPressure) / (efficiencyDecimal * 1000) : 0;         //up
+      const lpa = baseLpa + lpaDelta;
+      const rpmLabel = rpmPrecision > 0 ? newRpm.toFixed(rpmPrecision) : String(Math.round(newRpm));
+      newPoints[i] = {
+        rpm: rpmLabel,                                                                                          //up           
         flowRate: Number(flowRate).toFixed(6),
         totalPressure: Number(totalPressure).toFixed(6),
         velocity: Number(velocity).toFixed(6),
         efficiency: Number(efficiency).toFixed(4),
         brakePower: Number(brakePower).toFixed(6),
         lpa: Number(lpa).toFixed(6)
-      });
+      };
     }
     return newPoints;
   };
@@ -610,10 +618,16 @@ const FlowCalculate = () => {
       dispatch(setCalculatedPoints(points));
       dispatch(setAllDataGenerated(points));
       const currentRpm = parseFloat(validPoints[0].rpm) || 900;
-      dispatch(setAllRpmPoints({ [currentRpm]: points }));
-      dispatch(setSelectedRpm(currentRpm));
+      // Determine RPM precision from the user's first RPM input string
+      const rpmStr = (validPoints[0].rpm ?? '').toString();                                                       //up
+      const precision = rpmStr.includes('.') ? (rpmStr.split('.')[1]?.length || 0) : 0;
+      setRpmPrecision(precision);
+      const currentRpmRounded = Number(currentRpm.toFixed(precision));
+      const currentRpmKey = precision > 0 ? currentRpmRounded.toFixed(precision) : String(Math.round(currentRpmRounded));
+      dispatch(setAllRpmPoints({ [currentRpmKey]: points }));
+      dispatch(setSelectedRpm(currentRpmRounded));
       dispatch(setNextRpmPoints(points));
-      setNextRpm((currentRpm + 1).toString());
+      setNextRpm(((currentRpmRounded) + 1).toFixed(precision));                                                 //up
       setShowResults(true);
       setIsLoading(false);
     } else {
@@ -644,23 +658,39 @@ const FlowCalculate = () => {
     setIsGenerating(true);
     setTimeout(() => {
       const allPoints = { ...allRpmPoints };
-      let allGeneratedData = [...calculatedPoints];
-      for (let rpm = currentRpm + 1; rpm <= targetRpm; rpm++) {
-        const rpmPoints = generateNextRpmPoints(calculatedPoints, currentRpm, rpm);
-        allPoints[rpm] = rpmPoints;
-        allGeneratedData = [...allGeneratedData, ...rpmPoints];
+      const allGeneratedData = [...calculatedPoints];                                              //up
+      // Preserve the fractional part of currentRpm while stepping by 1.00
+      const frac = currentRpm - Math.floor(currentRpm);
+      const startInt = Math.ceil(currentRpm); // first integer strictly > currentRpm if frac>0, else current
+      const endInt = Math.floor(targetRpm);
+      for (let intPart = startInt; intPart <= endInt; intPart++) {
+        const rpmValue = intPart + frac;
+        if (rpmValue <= currentRpm) continue; // guard
+        if (rpmValue > targetRpm) break;
+        const rpmRounded = rpmPrecision > 0 ? Number(rpmValue.toFixed(rpmPrecision)) : Math.round(rpmValue);
+        const rpmKey = rpmPrecision > 0 ? rpmRounded.toFixed(rpmPrecision) : String(rpmRounded);
+        const rpmPoints = generateNextRpmPoints(calculatedPoints, currentRpm, rpmRounded);
+        allPoints[rpmKey] = rpmPoints;
+        allGeneratedData.push(...rpmPoints);
+      }
+      // Include exact target RPM if not already included
+      const targetRounded = rpmPrecision > 0 ? Number(targetRpm.toFixed(rpmPrecision)) : Math.round(targetRpm);
+      const targetKey = rpmPrecision > 0 ? targetRounded.toFixed(rpmPrecision) : String(targetRounded);
+      if (!(targetKey in allPoints)) {
+        const rpmPoints = generateNextRpmPoints(calculatedPoints, currentRpm, targetRounded);
+        allPoints[targetKey] = rpmPoints;
+        allGeneratedData.push(...rpmPoints);                                                                   //up
       }
       dispatch(setAllRpmPoints(allPoints));
       dispatch(setAllDataGenerated(allGeneratedData));
-      const firstGeneratedRpm = currentRpm + 1;
-      dispatch(setSelectedRpm(firstGeneratedRpm));
-      dispatch(setNextRpmPoints(allPoints[firstGeneratedRpm]));
+      dispatch(setSelectedRpm(targetRounded));                                           //up
+      dispatch(setNextRpmPoints(allPoints[targetKey]));                                         //up
       setIsGenerating(false);
     }, 0);
   };
 
   const handleRpmSelect = (e) => {
-    const selectedRpm = parseInt(e.target.value);
+    const selectedRpm = parseFloat(e.target.value);                                      //up
     dispatch(setSelectedRpm(selectedRpm));
     dispatch(setNextRpmPoints(allRpmPoints[selectedRpm]));
   };
@@ -817,6 +847,7 @@ const FlowCalculate = () => {
                       <label className="block text-sm font-medium text-[#334155] mb-2">RPM</label>
                       <input
                         type="number"
+                        step="any"
                         value={point.rpm}
                         onChange={(e) => handleInputChange(index, 'rpm', e.target.value)}
                         className="w-full px-4 py-2 bg-white border border-[#C7DAFF] rounded-lg text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent"
@@ -884,6 +915,7 @@ const FlowCalculate = () => {
                     <label className="block text-sm font-medium text-[#334155] mb-2">Next RPM</label>
                     <input
                       type="number"
+                      step="any"
                       value={nextRpm}
                       onChange={(e) => setNextRpm(e.target.value)}
                       className="w-full px-4 py-2 bg-white border border-[#C7DAFF] rounded-lg text-[#1F3B73] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent"
