@@ -321,7 +321,40 @@ const FlowSearch = () => {
     onSuccess: (res) => {
       const ok = res?.data?.success;
       if (ok) {
-        const results = res?.data?.data?.results || [];
+        let results = res?.data?.data?.results || [];
+        // If series is NBR-D (or NBR_D), transform returned results per requested rules
+        if (fanCategory === 'centrifugal' && (String(series).toUpperCase() === 'NBR-D' || String(series).toUpperCase() === 'NBR_D')) {
+          const rpmFactor = 1.0063559;
+          const flowFactor = 2;
+          const lpaAdd = 5.8;
+          const brakePowerFactor = 2.059242;
+          const totalPressureFactor = 1.0649448;
+          const efficiencyFactor = 1.023;
+          results = results.map((r) => {
+            const rpmObj = r?.rpm || {};
+            const rpmVal = Number(rpmObj.rpm);
+            const transformedRpmVal = Number.isFinite(rpmVal) ? rpmVal * rpmFactor : rpmObj.rpm;
+            const newRpm = { ...rpmObj, rpm: transformedRpmVal };
+
+            const cp = r?.closestPoint || {};
+            const flow = Number(cp.flowRate);
+            const totP = Number(cp.totalPressure);
+            const eff = Number(cp.efficiency);
+            const bp = Number(cp.brakePower);
+            const lpa = Number(cp.lpa);
+
+            const newClosestPoint = {
+              ...cp,
+              flowRate: Number.isFinite(flow) ? flow * flowFactor : cp.flowRate,
+              totalPressure: Number.isFinite(totP) ? totP * totalPressureFactor : cp.totalPressure,
+              efficiency: Number.isFinite(eff) ? Math.min(100, eff * efficiencyFactor) : cp.efficiency,
+              brakePower: Number.isFinite(bp) ? bp * brakePowerFactor : cp.brakePower,
+              lpa: Number.isFinite(lpa) ? lpa + lpaAdd : cp.lpa,
+            };
+
+            return { ...r, rpm: newRpm, closestPoint: newClosestPoint };
+          });
+        }
         setApiResults(results);
         console.log(results);
         
@@ -358,7 +391,33 @@ const FlowSearch = () => {
   const fetchPointsMutation = useMutation({
     mutationFn: (rpmId) => api.get(`/point/?rpmId=${rpmId}`),
     onSuccess: (res, rpmId) => {
-      const points = res?.data?.data || res?.data || [];
+      let points = res?.data?.data || res?.data || [];
+      // Apply NBR-D/NBR_D transformations to points like search results
+      if (fanCategory === 'centrifugal' && (String(series).toUpperCase() === 'NBR-D' || String(series).toUpperCase() === 'NBR_D')) {
+        const rpmFactor = 1.0063559;
+        const flowFactor = 2;
+        const lpaAdd = 5.8;
+        const brakePowerFactor = 2.059242;
+        const totalPressureFactor = 1.0649448;
+        const efficiencyFactor = 1.023;
+        points = points.map(p => {
+          const rpm = Number(p.rpm);
+          const flow = Number(p.flowRate);
+          const totP = Number(p.totalPressure);
+          const eff = Number(p.efficiency);
+          const bp = Number(p.brakePower);
+          const lpa = Number(p.lpa);
+          return {
+            ...p,
+            rpm: Number.isFinite(rpm) ? rpm * rpmFactor : p.rpm,
+            flowRate: Number.isFinite(flow) ? flow * flowFactor : p.flowRate,
+            totalPressure: Number.isFinite(totP) ? totP * totalPressureFactor : p.totalPressure,
+            efficiency: Number.isFinite(eff) ? Math.min(100, eff * efficiencyFactor) : p.efficiency,
+            brakePower: Number.isFinite(bp) ? bp * brakePowerFactor : p.brakePower,
+            lpa: Number.isFinite(lpa) ? lpa + lpaAdd : p.lpa,
+          };
+        });
+      }
       setModelPoints(prev => ({ ...prev, [rpmId]: points }));
       setLoadingPoints(prev => ({ ...prev, [rpmId]: false }));
     },
@@ -420,10 +479,28 @@ const FlowSearch = () => {
 
     if (fanCategory === 'centrifugal') {
       payload.pressureType = pressureClass; // low | medium | high
-      payload.configurationType = pressureClass === 'low' ? lowConfig.toUpperCase() : undefined; // SISW | DIDW
-      payload.centrifugalType = series; // NBR, NBS, NBRS, etc.
+      // payload.configurationType = pressureClass === 'low' ? lowConfig.toUpperCase() : undefined; // SISW | DIDW
+      // Map NBR-D to NBR for API, keep others as-is
+      // payload.centrifugalType = (series === 'NBR-D') ?  : series; // NBR, NBS, NBRS, etc.
+      // payload.configurationType = (series === 'NBR-D') ? lowConfig.toUpperCase() : undefined
+
+      if(series === 'NBR-D') {
+        payload.configurationType = 'SISW'
+        payload.flowRate = Number(payload.flowRate) / 2;
+        payload.centrifugalType = 'NBR'
+      }else {
+            payload.configurationType = pressureClass === 'low' ? lowConfig.toUpperCase() : undefined
+            payload.centrifugalType = series
+      }
       payload.axialOption = mapDriveToCode(driveType); // BD, DD, BDWF
+
+      // For NBR-D, halve the entered flow rate before sending to API
+      // if (series === 'NBR-D') {
+      // }
     }
+
+    // Log the final payload being sent to the API
+    console.log('[FlowSearch] Search payload:', payload);
 
     searchMutation.mutate(payload);
   };
