@@ -1044,7 +1044,7 @@ const FlowSearch = () => {
         const wpRows = [
           ['Flow Rate', `${Number(closestPoint.flowRate).toFixed(6)} m3/s`],
           ['Total Pressure', `${Number(closestPoint.totalPressure).toFixed(6)} Pa`],
-          ['Static Pressure', `${calculateStaticPressure(Number(closestPoint.totalPressure), Number(closestPoint.velocity)).toFixed(6)} Pa`],
+          ['Static Pressure', `${Number(closestPoint.staticPressure).toFixed?.(6) ?? Number(closestPoint.staticPressure).toFixed(6)} Pa`],
           ['Efficiency', `${Number(closestPoint.efficiency).toFixed(2)} %`],
           ['Brake Power', `${Number(closestPoint.brakePower).toFixed(6)} kw`],
           ['Installed', `${(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw`],
