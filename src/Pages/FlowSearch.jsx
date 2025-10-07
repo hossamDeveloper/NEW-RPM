@@ -82,10 +82,31 @@ const FlowSearch = () => {
   // Centrifugal series images (placeholders under assets/centrifugal)
   const centrifugalImages = import.meta.glob('../assets/centrifugal/*', { eager: true });
   const getCentrifugalImage = (code) => {
+    if (!code) return undefined;
+    const wanted = String(code).trim().toUpperCase();
+
+    // Helper to get filename without extension in UPPERCASE
+    const getBase = (p) => {
+      const filename = p.split('/').pop() || '';
+      const noQuery = filename.split('?')[0];
+      const noExt = noQuery.replace(/\.[a-zA-Z0-9]+$/, '');
+      return noExt.toUpperCase();
+    };
+
+    // 1) Exact filename match (e.g., NBR.png should match code NBR and not NBR-D)
+    for (const path in centrifugalImages) {
+      const base = getBase(path);
+      if (base === wanted) {
+        const mod = centrifugalImages[path];
+        return mod?.default || mod;
+      }
+    }
+
+    // 2) Fallback: substring match if exact not found
     for (const path in centrifugalImages) {
       const mod = centrifugalImages[path];
       const url = mod?.default || mod;
-      if (path.toUpperCase().includes(code.toUpperCase())) return url;
+      if (path.toUpperCase().includes(wanted)) return url;
     }
     return undefined;
   };
@@ -328,7 +349,9 @@ const FlowSearch = () => {
           const flowFactor = 2;
           const lpaAdd = 5.8;
           const brakePowerFactor = 2.059242;
-          const totalPressureFactor = 1.0649448;
+          // const totalPressureFactor = 1.0649448;
+          const dynamicPressureFactor = 1.180619;
+
           const efficiencyFactor = 1.023;
           results = results.map((r) => {
             const rpmObj = r?.rpm || {};
@@ -336,17 +359,20 @@ const FlowSearch = () => {
             const transformedRpmVal = Number.isFinite(rpmVal) ? rpmVal * rpmFactor : rpmObj.rpm;
             const newRpm = { ...rpmObj, rpm: transformedRpmVal };
 
-            const cp = r?.closestPoint || {};
-            const flow = Number(cp.flowRate);
-            const totP = Number(cp.totalPressure);
-            const eff = Number(cp.efficiency);
-            const bp = Number(cp.brakePower);
-            const lpa = Number(cp.lpa);
+          const cp = r?.closestPoint || {};
+          const flow = Number(cp.flowRate);
+          const dynP = Number(cp.dynamicPressure);
+          const statP = Number(cp.staticPressure);
+
+          const eff = Number(cp.efficiency);
+          const bp = Number(cp.brakePower);
+          const lpa = Number(cp.lpa);
 
             const newClosestPoint = {
               ...cp,
-              flowRate: Number.isFinite(flow) ? flow * flowFactor : cp.flowRate,
-              totalPressure: Number.isFinite(totP) ? totP * totalPressureFactor : cp.totalPressure,
+            flowRate: Number.isFinite(flow) ? flow * flowFactor : cp.flowRate,
+            dynamicPressure: Number.isFinite(dynP) ? dynP * dynamicPressureFactor : cp.dynamicPressure,
+            totalPressure: (Number.isFinite(dynP) ? dynP * dynamicPressureFactor : Number(cp.dynamicPressure) || 0) + (Number.isFinite(statP) ? statP : Number(cp.staticPressure) || 0),
               efficiency: Number.isFinite(eff) ? Math.min(100, eff * efficiencyFactor) : cp.efficiency,
               brakePower: Number.isFinite(bp) ? bp * brakePowerFactor : cp.brakePower,
               lpa: Number.isFinite(lpa) ? lpa + lpaAdd : cp.lpa,
@@ -398,12 +424,20 @@ const FlowSearch = () => {
         const flowFactor = 2;
         const lpaAdd = 5.8;
         const brakePowerFactor = 2.059242;
-        const totalPressureFactor = 1.0649448;
+        // const totalPressureFactor = 1.0649448;
+        const dynamicPressureFactor = 1.180619;
         const efficiencyFactor = 1.023;
         points = points.map(p => {
           const rpm = Number(p.rpm);
           const flow = Number(p.flowRate);
-          const totP = Number(p.totalPressure);
+          const statP = Number(p.staticPressure);
+          // Fallback: derive dynamicPressure if missing
+          const dynBase = Number.isFinite(Number(p.dynamicPressure))
+            ? Number(p.dynamicPressure)
+            : (Number.isFinite(Number(p.totalPressure)) && Number.isFinite(statP)
+              ? Math.max(0, Number(p.totalPressure) - statP)
+              : 0);
+          const dynP = Number(dynBase);
           const eff = Number(p.efficiency);
           const bp = Number(p.brakePower);
           const lpa = Number(p.lpa);
@@ -411,13 +445,17 @@ const FlowSearch = () => {
             ...p,
             rpm: Number.isFinite(rpm) ? rpm * rpmFactor : p.rpm,
             flowRate: Number.isFinite(flow) ? flow * flowFactor : p.flowRate,
-            totalPressure: Number.isFinite(totP) ? totP * totalPressureFactor : p.totalPressure,
+            dynamicPressure: Number.isFinite(dynP) ? dynP * dynamicPressureFactor : dynBase,
+            totalPressure: (Number.isFinite(dynP) ? dynP * dynamicPressureFactor : dynBase) + (Number.isFinite(statP) ? statP : 0),
+
             efficiency: Number.isFinite(eff) ? Math.min(100, eff * efficiencyFactor) : p.efficiency,
             brakePower: Number.isFinite(bp) ? bp * brakePowerFactor : p.brakePower,
             lpa: Number.isFinite(lpa) ? lpa + lpaAdd : p.lpa,
           };
         });
       }
+      // Log the transformed (or raw) points for debugging/verification
+      console.log('[FlowSearch] Points (final, to be displayed):', points);
       setModelPoints(prev => ({ ...prev, [rpmId]: points }));
       setLoadingPoints(prev => ({ ...prev, [rpmId]: false }));
     },
@@ -516,14 +554,7 @@ const FlowSearch = () => {
 
   const curvePoints = getCurrentModelPoints();
 
-  // Function to calculate static pressure from total pressure and velocity
-  const calculateStaticPressure = (totalPressure, velocity) => {
-    if (!totalPressure || !velocity) return 0;
-    const rho = 1.225; // Air density at sea level (kg/m³)
-    const dynamicPressure = 0.5 * rho * velocity * velocity;
-    const staticPressure = totalPressure - dynamicPressure;
-    return Math.max(0, staticPressure); // Ensure non-negative
-  };
+  // Static and dynamic pressure now come from API; no client-side calculation needed
 
   const chartOptions = {
     responsive: true,
@@ -539,7 +570,7 @@ const FlowSearch = () => {
       y: { type: 'linear', title: { display: true, text: 'Total Pressure (Pa)', color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { bottom: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: {}, beginAtZero: true, min: 0 }
     },
     interaction: { intersect: false, mode: 'nearest' },
-    elements: { point: { zIndex: 2 }, line: { tension: 0.4, cubicInterpolationMode: 'monotone' } }
+    elements: { point: { zIndex: 2, radius: 4, hoverRadius: 6 }, line: { tension: 0.4, cubicInterpolationMode: 'monotone' } }
   };
 
   const staticPressureChartOptions = {
@@ -590,7 +621,7 @@ const FlowSearch = () => {
         backgroundColor: 'rgba(59,130,246,0.3)',
         borderColor: 'rgb(59,130,246)',
         borderWidth: 2,
-        pointRadius: 2,
+        pointRadius: 1.3,
         pointHoverRadius: 3,
         pointBackgroundColor: 'rgb(59,130,246)',
         pointBorderColor: 'rgba(59,130,246,0.7)',
@@ -603,7 +634,7 @@ const FlowSearch = () => {
         backgroundColor: 'rgb(251,146,60)',
         borderColor: 'rgb(234,88,12)',
         borderWidth: 3,
-        pointRadius: 6,
+        pointRadius: 8,
         showLine: false,
       }] : [])
     ]
@@ -617,16 +648,14 @@ const FlowSearch = () => {
     datasets: [
       {
         label: 'Static Pressure Curve',
-        data: curvePoints.map(p => {
-          const totalPressure = parseFloat(p.totalPressure);
-          const velocity = parseFloat(p.velocity);
-          const staticPressure = calculateStaticPressure(totalPressure, velocity);
-          return { x: parseFloat(p.flowRate), y: staticPressure };
-        }),
+        data: curvePoints.map(p => ({
+          x: parseFloat(p.flowRate),
+          y: Number(p.staticPressure)
+        })),
         backgroundColor: 'rgba(168,85,247,0.3)',
         borderColor: 'rgb(168,85,247)',
         borderWidth: 2,
-        pointRadius: 2,
+        pointRadius: 1.3,
         pointHoverRadius: 3,
         pointBackgroundColor: 'rgb(168,85,247)',
         pointBorderColor: 'rgba(168,85,247,0.7)',
@@ -635,31 +664,17 @@ const FlowSearch = () => {
       },
       ...(closestPoint ? [{
         label: 'Working Point',
-        data: [{
-          x: parseFloat(closestPoint.flowRate), 
-          y: calculateStaticPressure(parseFloat(closestPoint.totalPressure), parseFloat(closestPoint.velocity))
-        }],
+        data: [{ x: parseFloat(closestPoint.flowRate), y: Number(closestPoint.staticPressure) }],
         backgroundColor: 'rgb(251,146,60)',
         borderColor: 'rgb(234,88,12)',
         borderWidth: 3,
-        pointRadius: 6,
+        pointRadius: 8,
         showLine: false,
       }] : [])
     ]
   } : (closestPoint ? {
     datasets: [
-      { 
-        label: 'Working Point', 
-        data: [{ 
-          x: parseFloat(closestPoint.flowRate), 
-          y: calculateStaticPressure(parseFloat(closestPoint.totalPressure), parseFloat(closestPoint.velocity))
-        }], 
-        backgroundColor: 'rgb(251,146,60)', 
-        borderColor: 'rgb(234,88,12)', 
-        borderWidth: 3, 
-        pointRadius: 8, 
-        showLine: false 
-      }
+      { label: 'Working Point', data: [{ x: parseFloat(closestPoint.flowRate), y: Number(closestPoint.staticPressure) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
     ]
   } : null);
 
@@ -671,7 +686,7 @@ const FlowSearch = () => {
         backgroundColor: 'rgb(148, 148, 22 ,.3)',
         borderColor: 'rgb(148, 148, 22)',
         borderWidth: 2,
-        pointRadius: 2,
+        pointRadius: 1.3,
         pointHoverRadius: 3,
         pointBackgroundColor: 'rgb(99,102,241)',
         pointBorderColor: 'rgba(150,150,20,0.7)',
@@ -684,7 +699,7 @@ const FlowSearch = () => {
         backgroundColor: 'rgb(251,146,60)',
         borderColor: 'rgb(234,88,12)',
         borderWidth: 3,
-        pointRadius: 6,
+        pointRadius: 8,
         showLine: false,
       }] : [])
     ]
@@ -702,7 +717,7 @@ const FlowSearch = () => {
         backgroundColor: 'rgba(16,185,129,0.25)',
         borderColor: 'rgb(5,150,105)',
         borderWidth: 2,
-        pointRadius: 2,
+        pointRadius: 1.3,
         pointHoverRadius: 3,
         pointBackgroundColor: 'rgb(5,150,105)',
         pointBorderColor: 'rgba(5,150,105,0.7)',
@@ -715,7 +730,7 @@ const FlowSearch = () => {
         backgroundColor: 'rgb(251,146,60)',
         borderColor: 'rgb(234,88,12)',
         borderWidth: 3,
-        pointRadius: 6,
+        pointRadius: 8,
         showLine: false,
       }] : [])
     ]
@@ -1590,13 +1605,13 @@ const FlowSearch = () => {
 
                         <tr><td className="py-2 px-4">Flow Rate</td><td className="py-2 px-4">{Number(closestPoint.flowRate).toFixed(6)} m3/s</td></tr>
                         <tr><td className="py-2 px-4">Total Pressure</td><td className="py-2 px-4">{Number(closestPoint.totalPressure).toFixed(6)} Pa</td></tr>
-                        <tr><td className="py-2 px-4">Static Pressure</td><td className="py-2 px-4">{calculateStaticPressure(Number(closestPoint.totalPressure), Number(closestPoint.velocity)).toFixed(6)} Pa</td></tr>
+                        <tr><td className="py-2 px-4">Static Pressure</td><td className="py-2 px-4">{Number(closestPoint.staticPressure)} Pa</td></tr>
                             <tr><td className="py-2 px-4">Velocity</td><td className="py-2 px-4">{Number(closestPoint.velocity).toFixed(6)} m/s</td></tr>
                             <tr><td className="py-2 px-4">Efficiency</td><td className="py-2 px-4">{Number(closestPoint.efficiency).toFixed(6)} %</td></tr>
                             <tr><td className="py-2 px-4">Brake Power</td><td className="py-2 px-4">{Number(closestPoint.brakePower).toFixed(6)} kw</td></tr>
                             <tr><td className="py-2 px-4">Installed</td><td className="py-2 px-4">{(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw</td></tr>
                             <tr><td className="py-2 px-4">LPA</td><td className="py-2 px-4">{Number(closestPoint.lpa).toFixed(6)} db</td></tr>
-                        <tr><td className="py-2 px-4">Dynamic Pressure</td><td className="py-2 px-4">{(0.5 * 1.225 * Number(closestPoint.velocity) * Number(closestPoint.velocity)).toFixed(6)} Pa</td></tr>
+                        <tr><td className="py-2 px-4">Dynamic Pressure</td><td className="py-2 px-4">{Number(closestPoint.dynamicPressure)} Pa</td></tr>
                         <tr><td className="py-2 px-4">Flow Rate Error</td><td className="py-2 px-4">{Number(closestPoint.flowRateError).toFixed(6)}</td></tr>
                         <tr><td className="py-2 px-4">Total Pressure Error</td><td className="py-2 px-4">{Number(closestPoint.totalPressureError).toFixed(6)}</td></tr>
                         <tr><td className="py-2 px-4">Average Error</td><td className="py-2 px-4">{Number(closestPoint.averageError).toFixed(6)}</td></tr>
