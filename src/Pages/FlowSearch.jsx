@@ -1361,7 +1361,7 @@ const FlowSearch = () => {
       <div className="space-y-8 p-6 ">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="text-center">
           <h2 className="text-2xl font-bold mb-4 text-[#1E3A8A]">Selector</h2>
-          <p className="text-[#475569]">Optimize your system with Nobel Fans's flow search tool</p>
+          <p className="text-[#475569]">Optimize your system with Nobel Fans's selection tool</p>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className=" bg-gradient-to-br from-[#E6F0FF] via-[#DDEBFF] to-[#CFE3FF] rounded-2xl p-6 shadow-sm border border-[#E5EDFF] relative">
