@@ -213,7 +213,7 @@ const FlowSearch = () => {
   // Centrifugal catalog (Series gallery) - moved outside conditional rendering for PDF access
   const getSeriesOptions = () => {
     if (pressureClass === 'low') {
-      if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI'];
+      if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP'];
       if (lowConfig === 'didw') return ['NBR-D', 'NBS-D'];
       return [];
     }
@@ -224,7 +224,7 @@ const FlowSearch = () => {
   
   // Get all possible series for image mapping
   const getAllSeriesOptions = () => {
-    return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NBR-D', 'NBS-D', 'NPD', 'NPE', 'NPF'];
+    return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP', 'NBR-D', 'NBS-D', 'NPD', 'NPE', 'NPF'];
   };
   
   const seriesCards = getAllSeriesOptions().map(s => ({
@@ -517,24 +517,20 @@ const FlowSearch = () => {
 
     if (fanCategory === 'centrifugal') {
       payload.pressureType = pressureClass; // low | medium | high
-      // payload.configurationType = pressureClass === 'low' ? lowConfig.toUpperCase() : undefined; // SISW | DIDW
-      // Map NBR-D to NBR for API, keep others as-is
-      // payload.centrifugalType = (series === 'NBR-D') ?  : series; // NBR, NBS, NBRS, etc.
-      // payload.configurationType = (series === 'NBR-D') ? lowConfig.toUpperCase() : undefined
 
-      if(series === 'NBR-D') {
+      if (series === 'NBR-D') {
         payload.configurationType = 'SISW'
         payload.flowRate = Number(payload.flowRate) / 2;
         payload.centrifugalType = 'NBR'
-      }else {
-            payload.configurationType = pressureClass === 'low' ? lowConfig.toUpperCase() : undefined
-            payload.centrifugalType = series
+      } else if (['NBRS', 'NC', 'NBXI', 'NP'].includes(String(series).toUpperCase())) {
+        // Map NBRS, NC, NBXI, NP to NBR with SISW configuration
+        payload.configurationType = 'SISW'
+        payload.centrifugalType = 'NBR'
+      } else {
+        payload.configurationType = pressureClass === 'low' ? lowConfig.toUpperCase() : undefined
+        payload.centrifugalType = series
       }
       payload.axialOption = mapDriveToCode(driveType); // BD, DD, BDWF
-
-      // For NBR-D, halve the entered flow rate before sending to API
-      // if (series === 'NBR-D') {
-      // }
     }
 
     // Log the final payload being sent to the API
@@ -1094,8 +1090,8 @@ const FlowSearch = () => {
           doc.text('Dimensions', 40, y);
           y += 20;
           
-          // Special handling for NEID with variants
-          if (axialType === 'NEID' && dimensionsData.variants) {
+          // Special handling for types with variants (NEID, NBR)
+          if (((axialType === 'NEID') || (getCurrentDimensionsType() === 'NBR')) && dimensionsData.variants) {
             for (const [variantIndex, variant] of dimensionsData.variants.entries()) {
               // Check if we need a new page for each variant
               if (y + 250 > pageHeight - 40) {
@@ -1127,8 +1123,9 @@ const FlowSearch = () => {
                 
                 const rowHeight = 14;
                 const labelWidth = 60;
+                const variantColumns = variant.columns || dimensionsData.columns || [];
                 
-                dimensionsData.columns.forEach((col, idx) => {
+                variantColumns.forEach((col, idx) => {
                   if (col.key === 'model') return; // Skip model column
                   
                   const rowY = y + (idx * rowHeight);
@@ -1152,10 +1149,10 @@ const FlowSearch = () => {
                   doc.setFontSize(8);
                   doc.setTextColor(51, 65, 85);
                   doc.setFont(undefined, 'normal');
-                  doc.text(String(selectedModelData[col.key] || ''), leftColumnX + labelWidth, rowY + 9);
+                  doc.text(String(selectedModelData[col.key] ?? ''), leftColumnX + labelWidth, rowY + 9);
                 });
                 
-                y += (dimensionsData.columns.length - 1) * rowHeight + 15;
+                y += (variantColumns.length - 1) * rowHeight + 15;
               }
               
               // Right column: Variant image
@@ -1225,8 +1222,8 @@ const FlowSearch = () => {
                 // Draw vertical list format
                 const rowHeight = 16;
                 const labelWidth = 80;
-                
-                dimensionsData.columns.forEach((col, idx) => {
+                const baseColumns = dimensionsData.columns || [];
+                baseColumns.forEach((col, idx) => {
                   if (col.key === 'model') return;
                   
                   const rowY = y + (idx * rowHeight);
@@ -1246,10 +1243,10 @@ const FlowSearch = () => {
                   doc.setFontSize(9);
                   doc.setTextColor(51, 65, 85);
                   doc.setFont(undefined, 'normal');
-                  doc.text(String(selectedModelData[col.key] || ''), leftColumnX + labelWidth, rowY + 11);
+                  doc.text(String(selectedModelData[col.key] ?? ''), leftColumnX + labelWidth, rowY + 11);
                 });
                 
-                y += (dimensionsData.columns.length - 1) * rowHeight + 20;
+                y += (baseColumns.length - 1) * rowHeight + 20;
               }
             }
             
@@ -1337,9 +1334,22 @@ const FlowSearch = () => {
     }
   };
 
+  const getCurrentDimensionsType = () => {
+    if (fanCategory === 'axial') return axialType || null;
+    if (fanCategory === 'centrifugal') {
+      if (['NBR', 'NBS', 'NBRS'].includes(String(series))) return 'NBR';
+    }
+    return null;
+  };
+
   const getCurrentDimensionsData = () => {
-    if (!axialType || !selected?.model?.name) return null;
-    return getDimensionsData(axialType, selected.model.name);
+    const typeKey = getCurrentDimensionsType();
+    if (!typeKey || !selected?.model?.name) return null;
+    // For types with multiple variants (e.g., NEID, NBR), return the full type with variants
+    if (typeKey === 'NBR' || axialType === 'NEID') {
+      return dimensionsData[typeKey] || null;
+    }
+    return getDimensionsData(typeKey, selected.model.name);
   };
 
   // In UI rendering for dimensions (non-PDF), resolve URLs too
@@ -1396,7 +1406,7 @@ const FlowSearch = () => {
                     </select>
                   </div>
                   {pressureClass === 'low' && (
-                    <p className="text-xs text-[#64748B]">SISW: NBR, NBS, NBRS, NC, NBXI — DIDW: NBR-D, NBS-D</p>
+                    <p className="text-xs text-[#64748B]">SISW: NBR, NBS, NBRS, NC, NBXI, NP — DIDW: NBR-D, NBS-D</p>
                   )}
                 </div>
               )}
@@ -1543,7 +1553,7 @@ const FlowSearch = () => {
                       onClick={() => handleModelSelect(idx)} 
                       className={`text-left p-3 rounded border transition-all ${selectedIndex===idx ? 'border-[#93C5FD] ring-2 ring-[#93C5FD]' : 'border-[#E5EDFF]'}`}
                     >
-                      <div className="text-[#1E3A8A] font-medium">Model: {r.model?.name} - {axialType}</div>
+                      <div className="text-[#1E3A8A] font-medium">Model: {r.model?.name} - {axialType || series}</div>
                       <div className="text-[#334155] text-sm">RPM: {r.rpm?.rpm}</div>
                       <div className="flex items-center gap-2 mt-2">
                         {isLoading ? (
@@ -1725,8 +1735,8 @@ const FlowSearch = () => {
                         );
                       }
 
-                      // Special handling for NEID with variants
-                      if (axialType === 'NEID' && dimensionsData.variants) {
+                      // Special handling for types with variants (NEID, NBR)
+                      if (((axialType === 'NEID') || (getCurrentDimensionsType() === 'NBR')) && dimensionsData.variants) {
                         return (
                           <div className="space-y-6">
                             {dimensionsData.variants.map((variant, variantIndex) => {
@@ -1766,7 +1776,7 @@ const FlowSearch = () => {
                                             Dimensions Data - {selectedModelData.model}
                                           </h4>
                                           <div className="space-y-2">
-                                            {dimensionsData.columns.map((col, colIdx) => (
+                                            {(variant.columns || dimensionsData.columns || []).map((col, colIdx) => (
                                               <div key={colIdx} className="flex justify-between py-1 border-b border-[#E5EDFF] last:border-b-0">
                                                 <span className="font-medium text-[#475569]">{col.label}:</span>
                                                 <span className="text-[#334155]">{selectedModelData[col.key]}</span>

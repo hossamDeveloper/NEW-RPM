@@ -92,7 +92,7 @@ const FlowCalculate = () => {
     const getAvailableSeries = () => {
       if (fanType !== 'centrifugal') return [];
       if (pressureClass === 'low') {
-        if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI'];
+        if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP'];
         if (lowConfig === 'didw') return ['NBR-D', 'NBS-D'];
         return [];
       }
@@ -777,7 +777,7 @@ const FlowCalculate = () => {
                   <option value="high" className="bg-white">High Pressure</option>
                 </select>
                 {pressureClass === 'low' && (
-                  <p className="mt-2 text-xs text-[#64748B]">SISW: NBR, NBS, NBRS, NC, NBXI — DIDW: NBR-D, NBS-D</p>
+                  <p className="mt-2 text-xs text-[#64748B]">SISW: NBR, NBS, NBRS, NC, NBXI, NP — DIDW: NBR-D, NBS-D</p>
                 )}
               </div>
               {pressureClass === 'low' && (
