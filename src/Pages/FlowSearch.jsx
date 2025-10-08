@@ -1076,8 +1076,16 @@ const FlowSearch = () => {
 
       // Add dimensions section
       try {
-        const dimensionsData = getDimensionsData(axialType, selected?.model?.name);
-        if (dimensionsData) {
+        // Determine which dimensions set to use (axial types or centrifugal NBR variants)
+        const typeKeyForPdf = getCurrentDimensionsType();
+        let dims = null;
+        if (typeKeyForPdf === 'NBR') {
+          // Use full NBR object with variants to print both NBR1 and NBR2
+          dims = dimensionsData['NBR'] || null;
+        } else if (typeKeyForPdf) {
+          dims = getDimensionsData(typeKeyForPdf, selected?.model?.name);
+        }
+        if (dims) {
           // Check if we need a new page
           if (y + 300 > pageHeight - 40) {
             doc.addPage();
@@ -1091,8 +1099,8 @@ const FlowSearch = () => {
           y += 20;
           
           // Special handling for types with variants (NEID, NBR)
-          if (((axialType === 'NEID') || (getCurrentDimensionsType() === 'NBR')) && dimensionsData.variants) {
-            for (const [variantIndex, variant] of dimensionsData.variants.entries()) {
+          if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR')) && dims.variants) {
+            for (const [variantIndex, variant] of dims.variants.entries()) {
               // Check if we need a new page for each variant
               if (y + 250 > pageHeight - 40) {
                 doc.addPage();
@@ -1123,7 +1131,7 @@ const FlowSearch = () => {
                 
                 const rowHeight = 14;
                 const labelWidth = 60;
-                const variantColumns = variant.columns || dimensionsData.columns || [];
+                const variantColumns = variant.columns || dims.columns || [];
                 
                 variantColumns.forEach((col, idx) => {
                   if (col.key === 'model') return; // Skip model column
@@ -1155,7 +1163,7 @@ const FlowSearch = () => {
                 y += (variantColumns.length - 1) * rowHeight + 15;
               }
               
-              // Right column: Variant image
+              // Variant image: render near full width
               if (variant.image) {
                 try {
                   console.log('Loading variant image for PDF:', variant.image);
@@ -1175,26 +1183,26 @@ const FlowSearch = () => {
                   const naturalW = img.naturalWidth || 400;
                   const naturalH = img.naturalHeight || 300;
                   
-                  // Scale to fit right column
-                  const maxWidth = columnWidth;
-                  const maxHeight = 180;
+                  // Scale to fit full page width with margins
+                  const maxWidth = pageWidth - 80; // 40 margin each side
+                  const maxHeight = 420;
                   const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
                   const imgW = Math.max(1, Math.round(naturalW * scale));
                   const imgH = Math.max(1, Math.round(naturalH * scale));
-                  
-                  // Center image vertically in right column
-                  const imageY = startY + 10;
-                  
-                  doc.addImage(variantImageBase64, 'PNG', rightColumnX, imageY, imgW, imgH);
-                  
-                  // Update y position to the bottom of the tallest column
-                  y = Math.max(y, imageY + imgH + 20);
+                  if (y + imgH + 40 > pageHeight - 40) {
+                    doc.addPage();
+                    y = 40;
+                  }
+                  const imageX = 40 + Math.max(0, Math.floor((maxWidth - imgW) / 2));
+                  const imageY = y + 10;
+                  doc.addImage(variantImageBase64, 'PNG', imageX, imageY, imgW, imgH);
+                  y = imageY + imgH + 20;
                 } catch (error) {
                   console.error(`Variant image ${variant.name} loading failed:`, error);
                   // Add text fallback
                   doc.setFontSize(10);
                   doc.setTextColor('#64748B');
-                  doc.text(`Image not available for ${variant.name}`, rightColumnX, startY + 20);
+                  doc.text(`Image not available for ${variant.name}`, 40, startY + 20);
                 }
               }
               
@@ -1208,13 +1216,13 @@ const FlowSearch = () => {
             const startY = y;
             
             // Left column: Dimensions data table
-            if (dimensionsData.data && dimensionsData.data.length > 0) {
+            if (dims.data && dims.data.length > 0) {
               doc.setFontSize(11);
               doc.setTextColor('#1e3a8a');
               doc.text('Dimensions Data', leftColumnX, y);
               y += 15;
               
-              const selectedModelData = dimensionsData.data.find(row => 
+              const selectedModelData = dims.data.find(row => 
                 row.model.includes(selected?.model?.name || '')
               );
               
@@ -1250,11 +1258,11 @@ const FlowSearch = () => {
               }
             }
             
-            // Right column: Dimensions image
-            if (dimensionsData.image) {
+            // Dimensions image: render near full width
+              if (dims.image) {
               try {
-                console.log('Loading dimensions image for PDF:', dimensionsData.image);
-                const resolvedUrl = resolveAnyImage(dimensionsData.image) || dimensionsData.image;
+                console.log('Loading dimensions image for PDF:', dims.image);
+                const resolvedUrl = resolveAnyImage(dims.image) || dims.image;
                 console.log('Resolved dimensions URL:', resolvedUrl);
                 const dimensionsImageBase64 = await loadImageAsBase64(resolvedUrl);
                 console.log('Dimensions image loaded successfully');
@@ -1269,23 +1277,25 @@ const FlowSearch = () => {
                 
                 const naturalW = img.naturalWidth || 400;
                 const naturalH = img.naturalHeight || 300;
-                const maxWidth = columnWidth;
-                const maxHeight = 200;
+                const maxWidth = pageWidth - 80; // margins
+                const maxHeight = 420;
                 const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
                 const imgW = Math.max(1, Math.round(naturalW * scale));
                 const imgH = Math.max(1, Math.round(naturalH * scale));
-                
-                const imageY = startY + 20;
-                
-                doc.addImage(dimensionsImageBase64, 'PNG', rightColumnX, imageY, imgW, imgH);
-                
-                y = Math.max(y, imageY + imgH + 20);
+                if (y + imgH + 40 > pageHeight - 40) {
+                  doc.addPage();
+                  y = 40;
+                }
+                const imageX = 40 + Math.max(0, Math.floor((maxWidth - imgW) / 2));
+                const imageY = y + 20;
+                doc.addImage(dimensionsImageBase64, 'PNG', imageX, imageY, imgW, imgH);
+                y = imageY + imgH + 20;
               } catch (error) {
-                console.error('Dimensions image loading failed:', error);
+                  console.error('Dimensions image loading failed:', error);
                 // Add text fallback
                 doc.setFontSize(10);
                 doc.setTextColor('#64748B');
-                doc.text('Dimensions image not available', rightColumnX, startY + 40);
+                doc.text('Dimensions image not available', 40, startY + 40);
               }
             }
           }
@@ -1361,7 +1371,7 @@ const FlowSearch = () => {
       <div className="space-y-8 p-6 ">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="text-center">
           <h2 className="text-2xl font-bold mb-4 text-[#1E3A8A]">Selector</h2>
-          <p className="text-[#475569]">Optimize your system with Nobel Fans's selection tool</p>
+          <p className="text-[#475569]">Optimize your system with Nobel Fans's flow search tool</p>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className=" bg-gradient-to-br from-[#E6F0FF] via-[#DDEBFF] to-[#CFE3FF] rounded-2xl p-6 shadow-sm border border-[#E5EDFF] relative">
