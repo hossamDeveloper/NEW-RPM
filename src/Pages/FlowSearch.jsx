@@ -258,7 +258,7 @@ const FlowSearch = () => {
       case 'm3/s': return v;
       case 'm3/hr': return v / 3600;
       case 'l/s': return v / 1000;
-      case 'cfm': return v * 0.00047194745;
+      case 'cfm': return v / 2117.647;
       default: return v;
     }
   };
@@ -268,7 +268,7 @@ const FlowSearch = () => {
       case 'm3/s': return x;
       case 'm3/hr': return x * 3600;
       case 'l/s': return x * 1000;
-      case 'cfm': return x / 0.00047194745;
+      case 'cfm': return x * 2117.647;
       default: return x;
     }
   };
@@ -277,7 +277,7 @@ const FlowSearch = () => {
     if (isNaN(v)) return 0;
     switch (unit) {
       case 'Pa': return v;
-      case 'InWc': return v * 249.08891;
+      case 'InWc': return v * 250;
       case 'kPa': return v * 1000;
       case 'bar': return v * 100000;
       default: return v;
@@ -287,7 +287,7 @@ const FlowSearch = () => {
     const x = parseFloat(v); if (isNaN(x)) return '';
     switch (unit) {
       case 'Pa': return x;
-      case 'InWc': return x / 249.08891;
+      case 'InWc': return x / 250;
       case 'kPa': return x / 1000;
       case 'bar': return x / 100000;
       default: return x;
@@ -552,18 +552,47 @@ const FlowSearch = () => {
 
   // Static and dynamic pressure now come from API; no client-side calculation needed
 
+  // Helper functions for unit conversion and chart labels
+  const getFlowUnitLabel = () => {
+    switch (flowUnit) {
+      case 'm3/s': return 'm³/s';
+      case 'm3/h': return 'm³/h';
+      case 'l/s': return 'l/s';
+      case 'cfm': return 'CFM';
+      default: return 'm³/s';
+    }
+  };
+
+  const getPressureUnitLabel = () => {
+    switch (pressureUnit) {
+      case 'Pa': return 'Pa';
+      case 'InWc': return 'inWc';
+      case 'kPa': return 'kPa';
+      case 'bar': return 'bar';
+      default: return 'Pa';
+    }
+  };
+
+  const convertChartPressureValue = (value) => {
+    return convertPressureFromPa(value, pressureUnit);
+  };
+
+  const convertChartFlowValue = (value) => {
+    return convertFlowFromM3S(value, flowUnit);
+  };
+
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: { position: 'top', labels: { color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: 20 } },
-      title: { display: true, text: 'Flow Rate vs Total Pressure (m3/s / Pa)', color: '#1F2937', font: { size: 16, weight: 'bold' }, padding: { top: 10, bottom: 20 } },
+      title: { display: true, text: `Flow Rate vs Total Pressure (${getFlowUnitLabel()} / ${getPressureUnitLabel()})`, color: '#1F2937', font: { size: 16, weight: 'bold' }, padding: { top: 10, bottom: 20 } },
       tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', padding: 12, titleColor: 'white', bodyColor: 'white', titleFont: { size: 14, weight: 'bold' }, bodyFont: { size: 13 },
-        callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} m3/s`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)} Pa`]; } } }
+        callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)} ${getPressureUnitLabel()}`]; } } }
     },
     scales: {
-      x: { type: 'linear', position: 'bottom', title: { display: true, text: 'Flow Rate (m3/s)', color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { top: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: {}, beginAtZero: true, min: 0 },
-      y: { type: 'linear', title: { display: true, text: 'Total Pressure (Pa)', color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { bottom: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: {}, beginAtZero: true, min: 0 }
+      x: { type: 'linear', position: 'bottom', title: { display: true, text: `Flow Rate (${getFlowUnitLabel()})`, color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { top: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: {}, beginAtZero: true, min: 0 },
+      y: { type: 'linear', title: { display: true, text: `Total Pressure (${getPressureUnitLabel()})`, color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { bottom: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: {}, beginAtZero: true, min: 0 }
     },
     interaction: { intersect: false, mode: 'nearest' },
     elements: { point: { zIndex: 2, radius: 4, hoverRadius: 6 }, line: { tension: 0.4, cubicInterpolationMode: 'monotone' } }
@@ -573,12 +602,12 @@ const FlowSearch = () => {
     ...chartOptions,
     plugins: {
       ...chartOptions.plugins,
-      title: { ...chartOptions.plugins.title, text: 'Flow Rate vs Static Pressure (m3/s / Pa)' },
-      tooltip: { ...chartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} m3/s`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)} Pa`]; } } }
+      title: { ...chartOptions.plugins.title, text: `Flow Rate vs Static Pressure (${getFlowUnitLabel()} / ${getPressureUnitLabel()})` },
+      tooltip: { ...chartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)} ${getPressureUnitLabel()}`]; } } }
     },
     scales: {
       ...chartOptions.scales,
-      y: { ...chartOptions.scales.y, title: { ...chartOptions.scales.y.title, text: 'Static Pressure (Pa)' } }
+      y: { ...chartOptions.scales.y, title: { ...chartOptions.scales.y.title, text: `Static Pressure (${getPressureUnitLabel()})` } }
     }
   };
 
@@ -586,8 +615,8 @@ const FlowSearch = () => {
     ...chartOptions,
     plugins: {
       ...chartOptions.plugins,
-      title: { ...chartOptions.plugins.title, text: 'Flow Rate vs Brake Power (m3/s)' },
-      tooltip: { ...chartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} m3/s`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)}`]; } } }
+      title: { ...chartOptions.plugins.title, text: `Flow Rate vs Brake Power (${getFlowUnitLabel()})` },
+      tooltip: { ...chartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)}`]; } } }
     },
     scales: {
       ...chartOptions.scales,
@@ -599,8 +628,8 @@ const FlowSearch = () => {
     ...chartOptions,
     plugins: {
       ...chartOptions.plugins,
-      title: { ...chartOptions.plugins.title, text: 'Flow Rate vs Efficiency (m3/s / %)' },
-      tooltip: { ...chartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} m3/s`, `${ctx.dataset.label}: ${p.y?.toFixed?.(2)}%`]; } } }
+      title: { ...chartOptions.plugins.title, text: `Flow Rate vs Efficiency (${getFlowUnitLabel()} / %)` },
+      tooltip: { ...chartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(2)}%`]; } } }
     },
     scales: {
       ...chartOptions.scales,
@@ -613,7 +642,10 @@ const FlowSearch = () => {
     datasets: [
       {
         label: 'Total Pressure Curve',
-        data: curvePoints.map(p => ({ x: parseFloat(p.flowRate), y: parseFloat(p.totalPressure) })),
+        data: curvePoints.map(p => ({ 
+          x: convertChartFlowValue(parseFloat(p.flowRate)), 
+          y: convertChartPressureValue(parseFloat(p.totalPressure)) 
+        })),
         backgroundColor: 'rgba(59,130,246,0.3)',
         borderColor: 'rgb(59,130,246)',
         borderWidth: 2,
@@ -626,7 +658,10 @@ const FlowSearch = () => {
       },
       ...(closestPoint ? [{
         label: 'Working Point',
-        data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.totalPressure) }],
+        data: [{ 
+          x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+          y: convertChartPressureValue(parseFloat(closestPoint.totalPressure)) 
+        }],
         backgroundColor: 'rgb(251,146,60)',
         borderColor: 'rgb(234,88,12)',
         borderWidth: 3,
@@ -636,7 +671,18 @@ const FlowSearch = () => {
     ]
   } : (closestPoint ? {
     datasets: [
-      { label: 'Working Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.totalPressure) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
+      { 
+        label: 'Working Point', 
+        data: [{ 
+          x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+          y: convertChartPressureValue(parseFloat(closestPoint.totalPressure)) 
+        }], 
+        backgroundColor: 'rgb(251,146,60)', 
+        borderColor: 'rgb(234,88,12)', 
+        borderWidth: 3, 
+        pointRadius: 8, 
+        showLine: false 
+      }
     ]
   } : null);
 
@@ -645,8 +691,8 @@ const FlowSearch = () => {
       {
         label: 'Static Pressure Curve',
         data: curvePoints.map(p => ({
-          x: parseFloat(p.flowRate),
-          y: Number(p.staticPressure)
+          x: convertChartFlowValue(parseFloat(p.flowRate)),
+          y: convertChartPressureValue(Number(p.staticPressure))
         })),
         backgroundColor: 'rgba(168,85,247,0.3)',
         borderColor: 'rgb(168,85,247)',
@@ -660,7 +706,10 @@ const FlowSearch = () => {
       },
       ...(closestPoint ? [{
         label: 'Working Point',
-        data: [{ x: parseFloat(closestPoint.flowRate), y: Number(closestPoint.staticPressure) }],
+        data: [{ 
+          x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+          y: convertChartPressureValue(Number(closestPoint.staticPressure)) 
+        }],
         backgroundColor: 'rgb(251,146,60)',
         borderColor: 'rgb(234,88,12)',
         borderWidth: 3,
@@ -670,7 +719,18 @@ const FlowSearch = () => {
     ]
   } : (closestPoint ? {
     datasets: [
-      { label: 'Working Point', data: [{ x: parseFloat(closestPoint.flowRate), y: Number(closestPoint.staticPressure) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
+      { 
+        label: 'Working Point', 
+        data: [{ 
+          x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+          y: convertChartPressureValue(Number(closestPoint.staticPressure)) 
+        }], 
+        backgroundColor: 'rgb(251,146,60)', 
+        borderColor: 'rgb(234,88,12)', 
+        borderWidth: 3, 
+        pointRadius: 8, 
+        showLine: false 
+      }
     ]
   } : null);
 
@@ -678,7 +738,7 @@ const FlowSearch = () => {
     datasets: [
       {
         label: 'Brake Power Curve',
-        data: curvePoints.map(p => ({ x: parseFloat(p.flowRate), y: parseFloat(p.brakePower) })),
+        data: curvePoints.map(p => ({ x: convertChartFlowValue(parseFloat(p.flowRate)), y: parseFloat(p.brakePower) })),
         backgroundColor: 'rgb(148, 148, 22 ,.3)',
         borderColor: 'rgb(148, 148, 22)',
         borderWidth: 2,
@@ -691,7 +751,7 @@ const FlowSearch = () => {
       },
       ...(closestPoint ? [{
         label: 'Working Point',
-        data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.brakePower) }],
+        data: [{ x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), y: parseFloat(closestPoint.brakePower) }],
         backgroundColor: 'rgb(251,146,60)',
         borderColor: 'rgb(234,88,12)',
         borderWidth: 3,
@@ -709,7 +769,7 @@ const FlowSearch = () => {
     datasets: [
       {
         label: 'Efficiency Curve',
-        data: curvePoints.map(p => ({ x: parseFloat(p.flowRate), y: parseFloat(p.efficiency) })),
+        data: curvePoints.map(p => ({ x: convertChartFlowValue(parseFloat(p.flowRate)), y: parseFloat(p.efficiency) })),
         backgroundColor: 'rgba(16,185,129,0.25)',
         borderColor: 'rgb(5,150,105)',
         borderWidth: 2,
@@ -722,7 +782,7 @@ const FlowSearch = () => {
       },
       ...(closestPoint ? [{
         label: 'Working Point',
-        data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.efficiency) }],
+        data: [{ x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), y: parseFloat(closestPoint.efficiency) }],
         backgroundColor: 'rgb(251,146,60)',
         borderColor: 'rgb(234,88,12)',
         borderWidth: 3,

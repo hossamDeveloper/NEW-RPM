@@ -88,33 +88,76 @@ const FlowCalculate = () => {
     if (qModelsError) setModelError('Failed to fetch models. Please try again.');
     else setModelError('');
 
-    // Determine available series per selection
-    const getAvailableSeries = () => {
-      if (fanType !== 'centrifugal') return [];
-      if (pressureClass === 'low') {
-        if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP'];
-        if (lowConfig === 'didw') return ['NBR-D', 'NBS-D'];
-        return [];
-      }
-      if (pressureClass === 'medium') return ['NPD', 'NPE'];
-      if (pressureClass === 'high') return ['NPF'];
-      return [];
-    };
-
-    // Filter models for centrifugal based on selected series
+    // Filter models for centrifugal based on selected series and configuration
     if (fanType === 'centrifugal') {
-      if (!series) {
-        setModels([]);
-      } else {
-        const filtered = (modelsData || []).filter((m) => {
-          if (!m?.name) return false;
-          const p = series;
-          return m.name.startsWith(p + ' ') || m.name.startsWith(p + '-') || m.name.startsWith(p);
+      const filtered = (modelsData || []).filter((model) => {
+        if (!model) return false;
+        
+        const matchesPressureType = model.pressureType === pressureClass;
+        
+        // If no series selected yet, show all models for the selected pressure class
+        if (!series) {
+          return matchesPressureType;
+        }
+        
+        // Filter based on centrifugalType and configurationType properties
+        const matchesCentrifugalType = model.centrifugalType === series;
+        const matchesConfigurationType = model.configurationType === lowConfig.toUpperCase();
+        
+        // Debug the actual values
+        console.log('Debug values:', {
+          modelCentrifugalType: model.centrifugalType,
+          selectedSeries: series,
+          centrifugalMatch: matchesCentrifugalType,
+          modelConfigurationType: model.configurationType,
+          selectedLowConfig: lowConfig,
+          configurationMatch: matchesConfigurationType
         });
-        setModels(filtered);
-      }
+        
+        // Debug logging
+        console.log('Model:', model.name, {
+          centrifugalType: model.centrifugalType,
+          configurationType: model.configurationType,
+          pressureType: model.pressureType,
+          series,
+          lowConfig,
+          pressureClass,
+          matchesCentrifugalType,
+          matchesConfigurationType,
+          matchesPressureType
+        });
+        
+        // For low pressure, check both centrifugalType and configurationType
+        if (pressureClass === 'low') {
+          // If no configuration selected yet, only check centrifugalType and pressureType
+          if (!lowConfig) {
+            const result = matchesCentrifugalType && matchesPressureType;
+            console.log('Low pressure without config - Result:', result);
+            return result;
+          }
+          // If configuration is selected, check all three
+          const result = matchesCentrifugalType && matchesConfigurationType && matchesPressureType;
+          console.log('Low pressure with config - Result:', result, {
+            matchesCentrifugalType,
+            matchesConfigurationType,
+            matchesPressureType
+          });
+          return result;
+        }
+        
+        // For medium and high pressure, only check centrifugalType and pressureType
+        if (pressureClass === 'medium' || pressureClass === 'high') {
+          return matchesCentrifugalType && matchesPressureType;
+        }
+        
+        // Fallback to just centrifugalType match
+        return matchesCentrifugalType;
+      });
+      setModels(filtered);
+      console.log('Filtered models:', filtered);
+      console.log('All models data:', modelsData);
     } else {
-    setModels(modelsData || []);
+      setModels(modelsData || []);
     }
   }, [qLoadingModels, qModelsError, modelsData, fanType, pressureClass, lowConfig, series]);
 
@@ -510,23 +553,26 @@ const FlowCalculate = () => {
       return Number(brakePower.toFixed(6));
     };
     const cubicCoeffsLpa = calculateCubicCoefficientsForLpa(basePoints);
-    const quinticEffCoeffs = calculatePolynomialCoefficientsForEfficiency(basePoints, 5, 1e-6);
+    
+    // Use cubic efficiency for NBS, quintic for others
+    const efficiencyDegree = (fanType === 'centrifugal' && series === 'NBS') ? 3 : 5;
+    const efficiencyCoeffs = calculatePolynomialCoefficientsForEfficiency(basePoints, efficiencyDegree, 1e-6);
     for (let i = 0; i < 1000; i++) {
       let flowRate, totalPressure, efficiency;
       const keyPoint = keyPoints.find(kp => kp.index === i);
       if (keyPoint) {
         flowRate = keyPoint.flowRate;
         totalPressure = keyPoint.totalPressure;
-        if (quinticEffCoeffs) {
-          efficiency = evaluatePolynomial(quinticEffCoeffs, flowRate);
+        if (efficiencyCoeffs) {
+          efficiency = evaluatePolynomial(efficiencyCoeffs, flowRate);
         } else {
           efficiency = keyPoint.efficiency;
         }
       } else {
         flowRate = calculateFlowRate(i);
         totalPressure = calculatePressure(flowRate);
-        if (quinticEffCoeffs) {
-          efficiency = evaluatePolynomial(quinticEffCoeffs, flowRate);
+        if (efficiencyCoeffs) {
+          efficiency = evaluatePolynomial(efficiencyCoeffs, flowRate);
         } else {
           efficiency = generateInterpolatedEfficiency(i, sortedPoints);
         }
