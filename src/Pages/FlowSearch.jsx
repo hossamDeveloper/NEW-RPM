@@ -68,6 +68,8 @@ const FlowSearch = () => {
   const powerChartRef = useRef(null);
   const efficiencyChartRef = useRef(null);
 
+  
+
   // Dynamically import all axial images (handles spaces/parentheses)
   const axialImages = import.meta.glob('../assets/axial/*', { eager: true });
   const getImageUrl = (codeOrLabel) => {
@@ -343,8 +345,13 @@ const FlowSearch = () => {
       const ok = res?.data?.success;
       if (ok) {
         let results = res?.data?.data?.results || [];
-        // If series is NBR-D (or NBR_D), transform returned results per requested rules
-        if (fanCategory === 'centrifugal' && (String(series).toUpperCase() === 'NBR-D' || String(series).toUpperCase() === 'NBR_D')) {
+        // If series is NBR-D/NBR_D or NBS-D/NBS_D, transform returned results per requested rules
+        if (
+          fanCategory === 'centrifugal' &&
+          (
+            ['NBR-D','NBR_D','NBS-D','NBS_D'].includes(String(series).toUpperCase())
+          )
+        ) {
           const rpmFactor = 1.0063559;
           const flowFactor = 2;
           const lpaAdd = 5.8;
@@ -418,8 +425,13 @@ const FlowSearch = () => {
     mutationFn: (rpmId) => api.get(`/point/?rpmId=${rpmId}`),
     onSuccess: (res, rpmId) => {
       let points = res?.data?.data || res?.data || [];
-      // Apply NBR-D/NBR_D transformations to points like search results
-      if (fanCategory === 'centrifugal' && (String(series).toUpperCase() === 'NBR-D' || String(series).toUpperCase() === 'NBR_D')) {
+        // Apply NBR-D/NBR_D or NBS-D/NBS_D transformations to points like search results
+      if (
+        fanCategory === 'centrifugal' &&
+        (
+          ['NBR-D','NBR_D','NBS-D','NBS_D'].includes(String(series).toUpperCase())
+        )
+      ) {
         const rpmFactor = 1.0063559;
         const flowFactor = 2;
         const lpaAdd = 5.8;
@@ -518,17 +530,23 @@ const FlowSearch = () => {
     if (fanCategory === 'centrifugal') {
       payload.pressureType = pressureClass; // low | medium | high
 
-      if (series === 'NBR-D') {
+      if (['NBR-D','NBR_D','NBS-D','NBS_D'].includes(String(series))) {
         payload.configurationType = 'SISW'
         payload.flowRate = Number(payload.flowRate) / 2;
-        payload.centrifugalType = 'NBR'
+        payload.centrifugalType = (String(series).toUpperCase().startsWith('NBR')) ? 'NBR' : 'NBS'
+  console.log('payload',payload);
+
       } else if (['NBRS', 'NC', 'NBXI', 'NP'].includes(String(series).toUpperCase())) {
         // Map NBRS, NC, NBXI, NP to NBR with SISW configuration
         payload.configurationType = 'SISW'
         payload.centrifugalType = 'NBR'
+  console.log('payload',payload);
+
       } else {
         payload.configurationType = pressureClass === 'low' ? lowConfig.toUpperCase() : undefined
         payload.centrifugalType = series
+  console.log('payload',payload);
+
       }
       payload.axialOption = mapDriveToCode(driveType); // BD, DD, BDWF
     }
@@ -1467,16 +1485,18 @@ const FlowSearch = () => {
                       <option value="high">High Pressure</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Select Configuration</label>
-                    <select value={lowConfig} onChange={(e)=>{ setLowConfig(e.target.value); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none" disabled={pressureClass !== 'low'}>
-                      <option value="">Select configuration</option>
-                      <option value="sisw">SISW</option>
-                      <option value="didw">DIDW</option>
-                    </select>
-                  </div>
                   {pressureClass === 'low' && (
-                    <p className="text-xs text-[#64748B]">SISW: NBR, NBS, NBRS, NC, NBXI, NP — DIDW: NBR-D, NBS-D</p>
+                    <>
+                      <div>
+                        <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Select Configuration</label>
+                        <select value={lowConfig} onChange={(e)=>{ setLowConfig(e.target.value); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
+                          <option value="">Select configuration</option>
+                          <option value="sisw">SISW</option>
+                          <option value="didw">DIDW</option>
+                        </select>
+                      </div>
+                     
+                    </>
                   )}
                 </div>
               )}
@@ -1534,9 +1554,7 @@ const FlowSearch = () => {
                       </button>
                     ))}
                   </div>
-                  {(series === 'NC' || series === 'NBXI') && (
-                    <p className="text-xs text-[#64748B]">NC/NBXI: نفس قاعدة بيانات NBR</p>
-                  )}
+                 
                   {series && (
                     <div className="mt-2 rounded-xl border border-[#E5EDFF] bg-white p-4">
                       <div className="text-[#1F3B73] text-sm font-semibold mb-3">{`${series} - Centrifugal Type`}</div>
@@ -1683,15 +1701,15 @@ const FlowSearch = () => {
                       <tbody className="divide-y divide-[#E5EDFF] text-[#334155]">
                           <tr><td className="py-2 px-4">RPM</td><td className="py-2 px-4">{selected?.rpm?.rpm}</td></tr>
 
-                        <tr><td className="py-2 px-4">Flow Rate</td><td className="py-2 px-4">{Number(closestPoint.flowRate).toFixed(6)} m3/s</td></tr>
-                        <tr><td className="py-2 px-4">Total Pressure</td><td className="py-2 px-4">{Number(closestPoint.totalPressure).toFixed(6)} Pa</td></tr>
-                        <tr><td className="py-2 px-4">Static Pressure</td><td className="py-2 px-4">{Number(closestPoint.staticPressure)} Pa</td></tr>
+                        <tr><td className="py-2 px-4">Flow Rate</td><td className="py-2 px-4">{Number(convertChartFlowValue(parseFloat(closestPoint.flowRate))).toFixed(6)} {getFlowUnitLabel()}</td></tr>
+                        <tr><td className="py-2 px-4">Total Pressure</td><td className="py-2 px-4">{Number(convertChartPressureValue(parseFloat(closestPoint.staticPressure + closestPoint.dynamicPressure))).toFixed(6)} {getPressureUnitLabel()}</td></tr>
+                        <tr><td className="py-2 px-4">Static Pressure</td><td className="py-2 px-4">{Number(convertChartPressureValue(Number(closestPoint.staticPressure))).toFixed(6)} {getPressureUnitLabel()}</td></tr>
                             <tr><td className="py-2 px-4">Velocity</td><td className="py-2 px-4">{Number(closestPoint.velocity).toFixed(6)} m/s</td></tr>
                             <tr><td className="py-2 px-4">Efficiency</td><td className="py-2 px-4">{Number(closestPoint.efficiency).toFixed(6)} %</td></tr>
                             <tr><td className="py-2 px-4">Brake Power</td><td className="py-2 px-4">{Number(closestPoint.brakePower).toFixed(6)} kw</td></tr>
                             <tr><td className="py-2 px-4">Installed</td><td className="py-2 px-4">{(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw</td></tr>
                             <tr><td className="py-2 px-4">LPA</td><td className="py-2 px-4">{Number(closestPoint.lpa).toFixed(6)} db</td></tr>
-                        <tr><td className="py-2 px-4">Dynamic Pressure</td><td className="py-2 px-4">{Number(closestPoint.dynamicPressure)} Pa</td></tr>
+                        <tr><td className="py-2 px-4">Dynamic Pressure</td><td className="py-2 px-4">{Number(convertChartPressureValue(Number(closestPoint.dynamicPressure))).toFixed(6)} {getPressureUnitLabel()}</td></tr>
                         <tr><td className="py-2 px-4">Flow Rate Error</td><td className="py-2 px-4">{Number(closestPoint.flowRateError).toFixed(6)}</td></tr>
                         <tr><td className="py-2 px-4">Total Pressure Error</td><td className="py-2 px-4">{Number(closestPoint.totalPressureError).toFixed(6)}</td></tr>
                         <tr><td className="py-2 px-4">Average Error</td><td className="py-2 px-4">{Number(closestPoint.averageError).toFixed(6)}</td></tr>
