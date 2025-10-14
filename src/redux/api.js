@@ -28,8 +28,9 @@ api.interceptors.response.use(
   (error) => {
     const status = error.response?.status;
     const message = (error.response?.data?.message || '').toLowerCase();
+    const skipRedirect = error.config?.headers?.['X-Skip-Auth-Redirect'] === 'true';
 
-    if (status === 401 || status === 403 || message.includes('token is invalid') || message.includes('invalid token')) {
+    if (!skipRedirect && (status === 401 || status === 403 || message.includes('token is invalid') || message.includes('invalid token'))) {
       try {
         store.dispatch(logout());
       } catch (_) {}

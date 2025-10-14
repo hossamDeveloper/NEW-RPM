@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useRef } from 'react';
 import { jsPDF } from 'jspdf';
+import AxialCategoryImg from '../assets/symbol-axial.png';
+import CentrifugalCategoryImg from '../assets/symbol-centrifugal.webp';
+import NEI2DCatalog from '../assets/NEI2D-catalog.pdf';
 import { useSelector } from 'react-redux';
 import { Scatter } from 'react-chartjs-2';
 import { motion } from 'framer-motion';
@@ -44,6 +47,7 @@ const FlowSearch = () => {
   const [notification, setNotification] = useState(null); // {type,message}
   const [apiResults, setApiResults] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [trackId, setTrackId] = useState('');
   const [chartView, setChartView] = useState('power'); // 'power' | 'efficiency'
   const [pressureChartView, setPressureChartView] = useState('total'); // 'total' | 'static'
   const [showPdfModal, setShowPdfModal] = useState(false);
@@ -68,6 +72,7 @@ const FlowSearch = () => {
   const powerChartRef = useRef(null);
   const efficiencyChartRef = useRef(null);
 
+  console.log(apiResults);
   
 
   // Dynamically import all axial images (handles spaces/parentheses)
@@ -345,6 +350,8 @@ const FlowSearch = () => {
       const ok = res?.data?.success;
       if (ok) {
         let results = res?.data?.data?.results || [];
+        let trackId = res?.data?.data?.trackId;
+        setTrackId(trackId);
         // If series is NBR-D/NBR_D or NBS-D/NBS_D, transform returned results per requested rules
         if (
           fanCategory === 'centrifugal' &&
@@ -818,6 +825,20 @@ const FlowSearch = () => {
     try {
       setPdfError('');
       setIsGeneratingPdf(true);
+      // Post generation history with trackId and modelId (if available)
+      try {
+        const modelId = selected?.model?._id || selected?.modelId || apiResults?.[selectedIndex]?.modelId;
+
+        console.log(trackId,'+',modelId);
+        
+          if (trackId && modelId) {
+            await api.post('/history/', { trackId, modelId });
+          }
+      } catch (historyErr) {
+        console.warn('Failed to post history record:', historyErr);
+        console.log(historyErr);
+        
+      }
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
@@ -1464,21 +1485,21 @@ const FlowSearch = () => {
           <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Category</label>
-              <div className="flex gap-3">
-                <label className="inline-flex items-center gap-2">
-                  <input type="radio" name="fanCategory" checked={fanCategory==='axial'} onChange={() => { setFanCategory('axial'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} />
-                  <span>Axial</span>
-                </label>
-                <label className="inline-flex items-center gap-2">
-                  <input type="radio" name="fanCategory" checked={fanCategory==='centrifugal'} onChange={() => { setFanCategory('centrifugal'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} />
-                  <span>Centrifugal</span>
-                </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => { setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setFanCategory('axial'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} className={`border rounded-lg p-3 hover:shadow transition ${fanCategory==='axial' ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
+                  <img src={AxialCategoryImg} alt="Axial" className="w-full h-24 object-contain" />
+                  <div className="mt-2 text-center text-[#1F3B73] text-sm font-medium">Axial</div>
+                </button>
+                <button type="button" onClick={() => { setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setFanCategory('centrifugal'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} className={`border rounded-lg p-3 hover:shadow transition ${fanCategory==='centrifugal' ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
+                  <img src={CentrifugalCategoryImg} alt="Centrifugal" className="w-full h-24 object-contain" />
+                  <div className="mt-2 text-center text-[#1F3B73] text-sm font-medium">Centrifugal</div>
+                </button>
               </div>
               {fanCategory === 'centrifugal' && (
                 <div className="mt-4 space-y-3">
                   <div>
                     <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Select Pressure</label>
-                    <select value={pressureClass} onChange={(e)=>{ setPressureClass(e.target.value); setLowConfig(''); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
+                    <select value={pressureClass} onChange={(e)=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setPressureClass(e.target.value); setLowConfig(''); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                       <option value="">Select pressure</option>
                       <option value="low">Low Pressure</option>
                       <option value="medium">Medium Pressure</option>
@@ -1489,7 +1510,7 @@ const FlowSearch = () => {
                     <>
                       <div>
                         <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Select Configuration</label>
-                        <select value={lowConfig} onChange={(e)=>{ setLowConfig(e.target.value); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
+                        <select value={lowConfig} onChange={(e)=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setLowConfig(e.target.value); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                           <option value="">Select configuration</option>
                           <option value="sisw">SISW</option>
                           <option value="didw">DIDW</option>
@@ -1507,7 +1528,7 @@ const FlowSearch = () => {
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Axial Types</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {axialTypes.map(t => (
-                    <button key={t.id} type="button" onClick={() => onSelectAxial(t.code)} className={`border rounded-lg p-2 hover:shadow transition ${axialType===t.code ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
+                    <button key={t.id} type="button" onClick={() => { setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); onSelectAxial(t.code); }} className={`border rounded-lg p-2 hover:shadow transition ${axialType===t.code ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
                       {t.img && <img src={t.img} alt={t.name} className="w-full h-20 object-contain" />}
                       <div className="mt-2 text-xs text-[#1F3B73] text-center">{t.name}</div>
                     </button>
@@ -1526,10 +1547,10 @@ const FlowSearch = () => {
               </div>
             )}
 
-            {fanCategory === 'axial' && axialType && (
+            {fanCategory === 'axial' && axialType && axialType !== 'NEI2D' && (
               <div>
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Drive Type</label>
-                <select value={driveType} onChange={(e)=>setDriveType(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
+                <select value={driveType} onChange={(e)=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setDriveType(e.target.value); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                   <option value="">Select drive type</option>
                   {driveOptions.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
@@ -1544,7 +1565,7 @@ const FlowSearch = () => {
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {currentSeriesCards.map(card => (
-                      <button key={card.code} type="button" onClick={()=>setSeries(card.code)} className={`border rounded-lg p-2 hover:shadow transition ${series===card.code ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'} ${(!pressureClass || (pressureClass==='low' && !lowConfig)) ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <button key={card.code} type="button" onClick={()=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setSeries(card.code); }} className={`border rounded-lg p-2 hover:shadow transition ${series===card.code ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'} ${(!pressureClass || (pressureClass==='low' && !lowConfig)) ? 'opacity-50 pointer-events-none' : ''}`}>
                         {card.img ? (
                           <img src={card.img} alt={card.name} className="w-full h-20 object-contain" />
                         ) : (
@@ -1571,7 +1592,7 @@ const FlowSearch = () => {
            {fanCategory === 'centrifugal' && series && (
               <div>
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Drive Type</label>
-                <select value={driveType} onChange={(e)=>setDriveType(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
+                <select value={driveType} onChange={(e)=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setDriveType(e.target.value); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                   <option value="">Select drive type</option>
                   {driveOptions.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
@@ -1581,12 +1602,13 @@ const FlowSearch = () => {
             )}
           </div>
 
+          {axialType !== 'NEI2D' && (
           <form onSubmit={handleSubmit} className="space-y-6 ">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Flow Rate</label>
                 <div className="flex gap-2">
-                  <input type="number" step="any" name="flowRate" value={searchData.flowRate} onChange={handleInputChange} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter flow rate" />
+                  <input type="number" step="any" name="flowRate" value={searchData.flowRate} onChange={(e)=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter flow rate" />
                   <select value={flowUnit} onChange={handleFlowUnitChange} className="px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                     <option value="m3/s">m3/s</option>
                     <option value="m3/hr">m3/hr</option>
@@ -1599,7 +1621,7 @@ const FlowSearch = () => {
               <div>
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Static Pressure</label>
                 <div className="flex gap-2">
-                  <input type="number" step="any" name="staticPressure" value={isJetFan ? '10' : searchData.staticPressure} onChange={handleInputChange} disabled={isJetFan} readOnly={isJetFan} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter static pressure" />
+                  <input type="number" step="any" name="staticPressure" value={isJetFan ? '10' : searchData.staticPressure} onChange={(e)=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} disabled={isJetFan} readOnly={isJetFan} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter static pressure" />
                   <select value={pressureUnit} onChange={handlePressureUnitChange} disabled={isJetFan} className="px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                     <option value="Pa">Pa</option>
                     <option value="InWc">InWc</option>
@@ -1621,6 +1643,7 @@ const FlowSearch = () => {
               </button>
             </div>
           </form>
+          )}
         </motion.div>
 
         {error && (<div className="text-center text-red-600">{error}</div>)}
@@ -1973,14 +1996,22 @@ const FlowSearch = () => {
             )}
           </motion.div>
         )}
-        {apiResults.length > 0 && (
+        {axialType === 'NEI2D' ? (
           <div className="flex justify-center">
-            <button type="button" onClick={()=>setShowPdfModal(true)} className="mt-2 px-6 py-3 rounded-xl shadow bg-[#1E3A8A] text-white hover:bg-[#1F3B73]">
-              Generate Technical Submittal
-            </button>
+            <a href={NEI2DCatalog} download onClick={()=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); }} className="mt-2 px-6 py-3 rounded-xl shadow bg-[#1E3A8A] text-white hover:bg-[#1F3B73]">
+              Download Catalog
+            </a>
           </div>
+        ) : (
+          apiResults.length > 0 && (
+            <div className="flex justify-center">
+              <button type="button" onClick={()=>setShowPdfModal(true)} className="mt-2 px-6 py-3 rounded-xl shadow bg-[#1E3A8A] text-white hover:bg-[#1F3B73]">
+                Generate Technical Submittal
+              </button>
+            </div>
+          )
         )}
-        {showPdfModal && (
+        {showPdfModal && axialType !== 'NEI2D' && (
           <div className="fixed inset-0 z-50 flex items-center justify-center">
             <div className="absolute inset-0 bg-black/50" onClick={()=>setShowPdfModal(false)} />
             <div className="relative bg-white rounded-xl border border-[#E5EDFF] p-6 w-full max-w-md mx-4">

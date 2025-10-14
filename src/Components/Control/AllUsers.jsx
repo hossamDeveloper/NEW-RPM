@@ -238,6 +238,8 @@ const AllUsers = () => {
                       const payload = (isSearch && Array.isArray(h.searchResults) && h.searchResults.length > 0)
                         ? h.searchResults
                         : (typeof h.details === 'object' && h.details) || h.data || h.payload || h.result || null;
+                        console.log('payload',payload);
+                        
                       const summary = (typeof h.details === 'string' && h.details) || h.message || h.description || '';
                       const hasExpandable = isSearch && Array.isArray(payload) && payload.length > 0;
                       return (
