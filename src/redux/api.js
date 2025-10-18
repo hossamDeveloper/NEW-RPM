@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { store } from './store';
-import { logout } from './authSlice';
+import { logout, logoutAsync } from './authSlice';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ,
@@ -32,7 +32,16 @@ api.interceptors.response.use(
 
     if (!skipRedirect && (status === 401 || status === 403 || message.includes('token is invalid') || message.includes('invalid token'))) {
       try {
-        store.dispatch(logout());
+        const state = store.getState();
+        const userId = state?.auth?.userId;
+        
+        if (userId) {
+          // Try to logout via API first
+          store.dispatch(logoutAsync(userId));
+        } else {
+          // Fallback to local logout if no userId
+          store.dispatch(logout());
+        }
       } catch (_) {}
       if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
         window.location.replace('/login');
@@ -42,5 +51,17 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Logout API call function
+export const logoutUser = async (userId) => {
+  try {
+    const response = await api.post(`/auth/logout/${userId}`);
+    return response.data;
+  } catch (error) {
+    // Even if the API call fails, we should still clear local state
+ 
+    throw error;
+  }
+};
 
 export default api; 

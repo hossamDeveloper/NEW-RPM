@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { logout } from '../redux/authSlice';
+import { logoutAsync, logout } from '../redux/authSlice';
 import logo from '../assets/logo.png';
 
 const linkIcons = [
@@ -27,11 +27,27 @@ const linkIcons = [
 const Navbar = () => {
   const dispatch = useDispatch();
   const userRole = useSelector((state) => state.auth.role);
+  const userId = useSelector((state) => state.auth.userId);
   const location = useLocation();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+
   const isActive = useCallback((path) => location.pathname === path, [location.pathname]);
+
+  const handleLogout = async () => {
+    try {
+      if (userId) {
+        await dispatch(logoutAsync(userId)).unwrap();
+      } else {
+        dispatch(logout());
+      }
+      navigate('/login');
+    } catch (error) {
+      // Even if logout API fails, still navigate to login
+      navigate('/login');
+    }
+  };
 
   const navLinks = useMemo(() => (
     [
@@ -70,8 +86,7 @@ const Navbar = () => {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => {
-                dispatch(logout());
-                navigate('/login');
+                handleLogout();
               }}
               className="ml-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors duration-200"
             >
@@ -152,9 +167,9 @@ const Navbar = () => {
             </div>
             <button
               onClick={() => {
-                dispatch(logout());
+                console.log('Mobile logout button clicked');
+                handleLogout();
                 setIsMenuOpen(false);
-                navigate('/login');
               }}
               className="w-full mt-4 px-4 py-3 bg-red-600 text-white rounded-lg text-base font-semibold hover:bg-red-700 transition-all duration-200 shadow-lg shadow-red-600/30"
             >

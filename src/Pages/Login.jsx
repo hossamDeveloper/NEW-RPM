@@ -40,8 +40,13 @@ const Login = () => {
         if (response.data.success && response.data.data?.token) {
           const token = response.data.data.token;
           const role = response.data.data.user.role;
+          const userId = response.data.data.user._id || response.data.data.user.id;
 
-          dispatch(loginSuccess({ token, role }));
+          console.log('Login response - User data:', response.data.data.user);
+          console.log('Login response - User ID:', userId);
+          console.log('Login response - User ID type:', typeof userId);
+
+          dispatch(loginSuccess({ token, role, userId }));
           navigate('/');
         } else {
           setError('Invalid response from server');
