@@ -42,10 +42,6 @@ const Login = () => {
           const role = response.data.data.user.role;
           const userId = response.data.data.user._id || response.data.data.user.id;
 
-          console.log('Login response - User data:', response.data.data.user);
-          console.log('Login response - User ID:', userId);
-          console.log('Login response - User ID type:', typeof userId);
-
           dispatch(loginSuccess({ token, role, userId }));
           navigate('/');
         } else {
@@ -82,6 +78,20 @@ const Login = () => {
         <div className="relative  bg-gradient-to-br from-[#E6F0FF] via-[#DDEBFF] to-[#CFE3FF] rounded-lg shadow-sm p-8 border border-[#E5EDFF]">
           <span className="absolute inset-x-0 top-0 h-1 rounded-t-lg bg-[#FDBA74]"></span>
           <h2 className="text-2xl font-bold text-[#1E3A8A] mb-6 text-center">Login</h2>
+          
+          {/* Arabic Notice */}
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 text-right">
+            <div className="flex items-start">
+            <div className="text-yellow-800 text-sm leading-relaxed">
+                <p className="mb-2">يرجى ملاحظة أنه لا يُسمح بتسجيل الدخول للاعضاء الجدد إلا بعد الحصول على إذن مسبق من الإدارة . </p>
+                <p className="font-semibold">  : للتواصل لتفعيل الحساب📞</p>
+                <p className="mt-1">01065000122 - 01065000128</p>
+              </div>
+              <span className="text-yellow-600 text-xl ms-4">⚠️</span>
+             
+            </div>
+          </div>
+          
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded mb-4">
               {error}

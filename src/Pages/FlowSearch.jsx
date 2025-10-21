@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRef } from 'react';
 import { jsPDF } from 'jspdf';
 import AxialCategoryImg from '../assets/symbol-axial.png';
@@ -74,6 +74,32 @@ const FlowSearch = () => {
 
   console.log(apiResults);
   
+  // Preload critical images for faster loading
+  useEffect(() => {
+    const preloadImages = [
+      AxialCategoryImg,
+      CentrifugalCategoryImg,
+      logoImg
+    ];
+    
+    preloadImages.forEach((src) => {
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'image';
+      link.href = src;
+      document.head.appendChild(link);
+    });
+    
+    // Cleanup function to remove preload links when component unmounts
+    return () => {
+      preloadImages.forEach((src) => {
+        const existingLink = document.querySelector(`link[href="${src}"]`);
+        if (existingLink && existingLink.rel === 'preload') {
+          document.head.removeChild(existingLink);
+        }
+      });
+    };
+  }, []);
 
   // Dynamically import all axial images (handles spaces/parentheses)
   const axialImages = import.meta.glob('../assets/axial/*', { eager: true });
@@ -581,7 +607,7 @@ const FlowSearch = () => {
   const getFlowUnitLabel = () => {
     switch (flowUnit) {
       case 'm3/s': return 'm³/s';
-      case 'm3/h': return 'm³/h';
+      case 'm3/hr': return 'm³/h';
       case 'l/s': return 'l/s';
       case 'cfm': return 'CFM';
       default: return 'm³/s';
@@ -599,16 +625,19 @@ const FlowSearch = () => {
   };
 
   const convertChartPressureValue = (value) => {
+    if (value === null || value === undefined || isNaN(value)) return 0;
     return convertPressureFromPa(value, pressureUnit);
   };
 
   const convertChartFlowValue = (value) => {
+    if (value === null || value === undefined || isNaN(value)) return 0;
     return convertFlowFromM3S(value, flowUnit);
   };
 
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    animation: false,
     plugins: {
       legend: { position: 'top', labels: { color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: 20 } },
       title: { display: true, text: `Flow Rate vs Total Pressure (${getFlowUnitLabel()} / ${getPressureUnitLabel()})`, color: '#1F2937', font: { size: 16, weight: 'bold' }, padding: { top: 10, bottom: 20 } },
@@ -620,7 +649,9 @@ const FlowSearch = () => {
       y: { type: 'linear', title: { display: true, text: `Total Pressure (${getPressureUnitLabel()})`, color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { bottom: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: {}, beginAtZero: true, min: 0 }
     },
     interaction: { intersect: false, mode: 'nearest' },
-    elements: { point: { zIndex: 2, radius: 4, hoverRadius: 6 }, line: { tension: 0.4, cubicInterpolationMode: 'monotone' } }
+    elements: { point: { zIndex: 2, radius: 2, hoverRadius: 4, hitRadius: 2 }, line: { tension: 0.2, cubicInterpolationMode: 'monotone' } },
+    parsing: false,
+    normalized: true
   };
 
   const staticPressureChartOptions = {
@@ -663,163 +694,229 @@ const FlowSearch = () => {
   };
 
   // Build datasets for full curve + closest point overlay
-  const pressureChartData = (curvePoints && curvePoints.length > 0) ? {
-    datasets: [
-      {
-        label: 'Total Pressure Curve',
-        data: curvePoints.map(p => ({ 
-          x: convertChartFlowValue(parseFloat(p.flowRate)), 
-          y: convertChartPressureValue(parseFloat(p.totalPressure)) 
-        })),
-        backgroundColor: 'rgba(59,130,246,0.3)',
-        borderColor: 'rgb(59,130,246)',
-        borderWidth: 2,
-        pointRadius: 1.3,
-        pointHoverRadius: 3,
-        pointBackgroundColor: 'rgb(59,130,246)',
-        pointBorderColor: 'rgba(59,130,246,0.7)',
-        showLine: true,
-        tension: 0.35,
-      },
-      ...(closestPoint ? [{
-        label: 'Working Point',
-        data: [{ 
-          x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
-          y: convertChartPressureValue(parseFloat(closestPoint.totalPressure)) 
-        }],
-        backgroundColor: 'rgb(251,146,60)',
-        borderColor: 'rgb(234,88,12)',
-        borderWidth: 3,
-        pointRadius: 8,
-        showLine: false,
-      }] : [])
-    ]
-  } : (closestPoint ? {
-    datasets: [
-      { 
-        label: 'Working Point', 
-        data: [{ 
-          x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
-          y: convertChartPressureValue(parseFloat(closestPoint.totalPressure)) 
-        }], 
-        backgroundColor: 'rgb(251,146,60)', 
-        borderColor: 'rgb(234,88,12)', 
-        borderWidth: 3, 
-        pointRadius: 8, 
-        showLine: false 
-      }
-    ]
-  } : null);
+  const pressureChartData = (() => {
+    if (!curvePoints || curvePoints.length === 0) {
+      if (!closestPoint) return { datasets: [] };
+      
+      return {
+        datasets: [
+          { 
+            label: 'Working Point', 
+            data: [{ 
+              x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+              y: convertChartPressureValue(parseFloat(closestPoint.totalPressure)) 
+            }], 
+            backgroundColor: 'rgb(251,146,60)', 
+            borderColor: 'rgb(234,88,12)', 
+            borderWidth: 3, 
+            pointRadius: 8, 
+            showLine: false 
+          }
+        ]
+      };
+    }
 
-  const staticPressureChartData = (curvePoints && curvePoints.length > 0) ? {
-    datasets: [
-      {
-        label: 'Static Pressure Curve',
-        data: curvePoints.map(p => ({
-          x: convertChartFlowValue(parseFloat(p.flowRate)),
-          y: convertChartPressureValue(Number(p.staticPressure))
-        })),
-        backgroundColor: 'rgba(168,85,247,0.3)',
-        borderColor: 'rgb(168,85,247)',
-        borderWidth: 2,
-        pointRadius: 1.3,
-        pointHoverRadius: 3,
-        pointBackgroundColor: 'rgb(168,85,247)',
-        pointBorderColor: 'rgba(168,85,247,0.7)',
-        showLine: true,
-        tension: 0.35,
-      },
-      ...(closestPoint ? [{
-        label: 'Working Point',
-        data: [{ 
-          x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
-          y: convertChartPressureValue(Number(closestPoint.staticPressure)) 
-        }],
-        backgroundColor: 'rgb(251,146,60)',
-        borderColor: 'rgb(234,88,12)',
-        borderWidth: 3,
-        pointRadius: 8,
-        showLine: false,
-      }] : [])
-    ]
-  } : (closestPoint ? {
-    datasets: [
-      { 
-        label: 'Working Point', 
-        data: [{ 
-          x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
-          y: convertChartPressureValue(Number(closestPoint.staticPressure)) 
-        }], 
-        backgroundColor: 'rgb(251,146,60)', 
-        borderColor: 'rgb(234,88,12)', 
-        borderWidth: 3, 
-        pointRadius: 8, 
-        showLine: false 
-      }
-    ]
-  } : null);
+    return {
+      datasets: [
+        {
+          label: 'Total Pressure Curve',
+          data: curvePoints.map(p => ({ 
+            x: convertChartFlowValue(parseFloat(p.flowRate)), 
+            y: convertChartPressureValue(parseFloat(p.totalPressure)) 
+          })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
+          backgroundColor: 'rgba(59,130,246,0.3)',
+          borderColor: 'rgb(59,130,246)',
+          borderWidth: 2,
+          pointRadius: 1.3,
+          pointHoverRadius: 3,
+          pointBackgroundColor: 'rgb(59,130,246)',
+          pointBorderColor: 'rgba(59,130,246,0.7)',
+          showLine: true,
+          tension: 0.35,
+        },
+        ...(closestPoint ? [{
+          label: 'Working Point',
+          data: [{ 
+            x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+            y: convertChartPressureValue(parseFloat(closestPoint.totalPressure)) 
+          }],
+          backgroundColor: 'rgb(251,146,60)',
+          borderColor: 'rgb(234,88,12)',
+          borderWidth: 3,
+          pointRadius: 8,
+          showLine: false,
+        }] : [])
+      ]
+    };
+  })();
 
-  const powerChartData = (curvePoints && curvePoints.length > 0) ? {
-    datasets: [
-      {
-        label: 'Brake Power Curve',
-        data: curvePoints.map(p => ({ x: convertChartFlowValue(parseFloat(p.flowRate)), y: parseFloat(p.brakePower) })),
-        backgroundColor: 'rgb(148, 148, 22 ,.3)',
-        borderColor: 'rgb(148, 148, 22)',
-        borderWidth: 2,
-        pointRadius: 1.3,
-        pointHoverRadius: 3,
-        pointBackgroundColor: 'rgb(99,102,241)',
-        pointBorderColor: 'rgba(150,150,20,0.7)',
-        showLine: true,
-        tension: 0.35,
-      },
-      ...(closestPoint ? [{
-        label: 'Working Point',
-        data: [{ x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), y: parseFloat(closestPoint.brakePower) }],
-        backgroundColor: 'rgb(251,146,60)',
-        borderColor: 'rgb(234,88,12)',
-        borderWidth: 3,
-        pointRadius: 8,
-        showLine: false,
-      }] : [])
-    ]
-  } : (closestPoint ? {
-    datasets: [
-      { label: 'Working Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.brakePower) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
-    ]
-  } : null);
+  const staticPressureChartData = (() => {
+    if (!curvePoints || curvePoints.length === 0) {
+      if (!closestPoint) return { datasets: [] };
+      
+      return {
+        datasets: [
+          { 
+            label: 'Working Point', 
+            data: [{ 
+              x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+              y: convertChartPressureValue(Number(closestPoint.staticPressure)) 
+            }], 
+            backgroundColor: 'rgb(251,146,60)', 
+            borderColor: 'rgb(234,88,12)', 
+            borderWidth: 3, 
+            pointRadius: 8, 
+            showLine: false 
+          }
+        ]
+      };
+    }
 
-  const efficiencyChartData = (curvePoints && curvePoints.length > 0) ? {
-    datasets: [
-      {
-        label: 'Efficiency Curve',
-        data: curvePoints.map(p => ({ x: convertChartFlowValue(parseFloat(p.flowRate)), y: parseFloat(p.efficiency) })),
-        backgroundColor: 'rgba(16,185,129,0.25)',
-        borderColor: 'rgb(5,150,105)',
-        borderWidth: 2,
-        pointRadius: 1.3,
-        pointHoverRadius: 3,
-        pointBackgroundColor: 'rgb(5,150,105)',
-        pointBorderColor: 'rgba(5,150,105,0.7)',
-        showLine: true,
-        tension: 0.35,
-      },
-      ...(closestPoint ? [{
-        label: 'Working Point',
-        data: [{ x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), y: parseFloat(closestPoint.efficiency) }],
-        backgroundColor: 'rgb(251,146,60)',
-        borderColor: 'rgb(234,88,12)',
-        borderWidth: 3,
-        pointRadius: 8,
-        showLine: false,
-      }] : [])
-    ]
-  } : (closestPoint ? {
-    datasets: [
-      { label: 'Working Point', data: [{ x: parseFloat(closestPoint.flowRate), y: parseFloat(closestPoint.efficiency) }], backgroundColor: 'rgb(251,146,60)', borderColor: 'rgb(234,88,12)', borderWidth: 3, pointRadius: 8, showLine: false }
-    ]
-  } : null);
+    return {
+      datasets: [
+        {
+          label: 'Static Pressure Curve',
+          data: curvePoints.map(p => ({
+            x: convertChartFlowValue(parseFloat(p.flowRate)),
+            y: convertChartPressureValue(Number(p.staticPressure))
+          })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
+          backgroundColor: 'rgba(168,85,247,0.3)',
+          borderColor: 'rgb(168,85,247)',
+          borderWidth: 2,
+          pointRadius: 1.3,
+          pointHoverRadius: 3,
+          pointBackgroundColor: 'rgb(168,85,247)',
+          pointBorderColor: 'rgba(168,85,247,0.7)',
+          showLine: true,
+          tension: 0.35,
+        },
+        ...(closestPoint ? [{
+          label: 'Working Point',
+          data: [{ 
+            x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+            y: convertChartPressureValue(Number(closestPoint.staticPressure)) 
+          }],
+          backgroundColor: 'rgb(251,146,60)',
+          borderColor: 'rgb(234,88,12)',
+          borderWidth: 3,
+          pointRadius: 8,
+          showLine: false,
+        }] : [])
+      ]
+    };
+  })();
+
+  const powerChartData = (() => {
+    if (!curvePoints || curvePoints.length === 0) {
+      if (!closestPoint) return { datasets: [] };
+      
+      return {
+        datasets: [
+          { 
+            label: 'Working Point', 
+            data: [{ 
+              x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+              y: parseFloat(closestPoint.brakePower) 
+            }], 
+            backgroundColor: 'rgb(251,146,60)', 
+            borderColor: 'rgb(234,88,12)', 
+            borderWidth: 3, 
+            pointRadius: 8, 
+            showLine: false 
+          }
+        ]
+      };
+    }
+
+    return {
+      datasets: [
+        {
+          label: 'Brake Power Curve',
+          data: curvePoints.map(p => ({ 
+            x: convertChartFlowValue(parseFloat(p.flowRate)), 
+            y: parseFloat(p.brakePower) 
+          })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
+          backgroundColor: 'rgb(148, 148, 22 ,.3)',
+          borderColor: 'rgb(148, 148, 22)',
+          borderWidth: 2,
+          pointRadius: 1.3,
+          pointHoverRadius: 3,
+          pointBackgroundColor: 'rgb(99,102,241)',
+          pointBorderColor: 'rgba(150,150,20,0.7)',
+          showLine: true,
+          tension: 0.35,
+        },
+        ...(closestPoint ? [{
+          label: 'Working Point',
+          data: [{ 
+            x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+            y: parseFloat(closestPoint.brakePower) 
+          }],
+          backgroundColor: 'rgb(251,146,60)',
+          borderColor: 'rgb(234,88,12)',
+          borderWidth: 3,
+          pointRadius: 8,
+          showLine: false,
+        }] : [])
+      ]
+    };
+  })();
+
+  const efficiencyChartData = (() => {
+    if (!curvePoints || curvePoints.length === 0) {
+      if (!closestPoint) return { datasets: [] };
+      
+      return {
+        datasets: [
+          { 
+            label: 'Working Point', 
+            data: [{ 
+              x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+              y: parseFloat(closestPoint.efficiency) 
+            }], 
+            backgroundColor: 'rgb(251,146,60)', 
+            borderColor: 'rgb(234,88,12)', 
+            borderWidth: 3, 
+            pointRadius: 8, 
+            showLine: false 
+          }
+        ]
+      };
+    }
+
+    return {
+      datasets: [
+        {
+          label: 'Efficiency Curve',
+          data: curvePoints.map(p => ({ 
+            x: convertChartFlowValue(parseFloat(p.flowRate)), 
+            y: parseFloat(p.efficiency) 
+          })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
+          backgroundColor: 'rgba(16,185,129,0.25)',
+          borderColor: 'rgb(5,150,105)',
+          borderWidth: 2,
+          pointRadius: 1.3,
+          pointHoverRadius: 3,
+          pointBackgroundColor: 'rgb(5,150,105)',
+          pointBorderColor: 'rgba(5,150,105,0.7)',
+          showLine: true,
+          tension: 0.35,
+        },
+        ...(closestPoint ? [{
+          label: 'Working Point',
+          data: [{ 
+            x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+            y: parseFloat(closestPoint.efficiency) 
+          }],
+          backgroundColor: 'rgb(251,146,60)',
+          borderColor: 'rgb(234,88,12)',
+          borderWidth: 3,
+          pointRadius: 8,
+          showLine: false,
+        }] : [])
+      ]
+    };
+  })();
 
   const handleGeneratePdf = async () => {
     try {
@@ -832,7 +929,7 @@ const FlowSearch = () => {
         console.log(trackId,'+',modelId);
         
           if (trackId && modelId) {
-            await api.post('/history/', { trackId, modelId });
+            await api.patch('/history/', { trackId, modelId });
           }
       } catch (historyErr) {
         console.warn('Failed to post history record:', historyErr);
@@ -1461,8 +1558,87 @@ const FlowSearch = () => {
     return getDimensionsData(typeKey, selected.model.name);
   };
 
+  // Image cache for resolved URLs
+  const imageCache = useRef(new Map());
+
   // In UI rendering for dimensions (non-PDF), resolve URLs too
-  const resolveUiImage = (p) => resolveDimensionImage(p) || p;
+  const resolveUiImage = (p) => {
+    if (!p) return p;
+    
+    // Check cache first
+    if (imageCache.current.has(p)) {
+      return imageCache.current.get(p);
+    }
+    
+    const resolved = resolveDimensionImage(p) || p;
+    imageCache.current.set(p, resolved);
+    return resolved;
+  };
+
+  // Image format optimization utility
+  const getOptimizedImageSrc = (src) => {
+    if (!src) return src;
+    
+    // For WebP support detection and fallback
+    const supportsWebP = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      return canvas.toDataURL('image/webp').indexOf('data:image/webp') === 0;
+    };
+    
+    // If it's already a WebP or external URL, return as is
+    if (src.includes('.webp') || src.startsWith('http')) {
+      return src;
+    }
+    
+    // For local images, try to use WebP if supported
+    if (supportsWebP() && (src.includes('.png') || src.includes('.jpg') || src.includes('.jpeg'))) {
+      // In a real implementation, you would have WebP versions of images
+      // For now, we'll keep the original format
+      return src;
+    }
+    
+    return src;
+  };
+
+  // Progressive Image Component with blur placeholder
+  const ProgressiveImage = ({ src, alt, className, onError, ...props }) => {
+    const [imageLoaded, setImageLoaded] = useState(false);
+    const [imageError, setImageError] = useState(false);
+
+    const handleLoad = () => {
+      setImageLoaded(true);
+    };
+
+    const handleError = (e) => {
+      setImageError(true);
+      if (onError) onError(e);
+    };
+
+    return (
+      <div className={`relative overflow-hidden ${className}`}>
+        {!imageLoaded && !imageError && (
+          <div className="absolute inset-0 bg-gray-200 animate-pulse flex items-center justify-center">
+            <div className="w-8 h-8 bg-gray-300 rounded-full animate-pulse"></div>
+          </div>
+        )}
+        <img
+          src={getOptimizedImageSrc(src)}
+          alt={alt}
+          className={`transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+          onLoad={handleLoad}
+          onError={handleError}
+          {...props}
+        />
+        {imageError && (
+          <div className="absolute inset-0 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
+            Image not available
+          </div>
+        )}
+      </div>
+    );
+  };
 
 
   return (
@@ -1487,11 +1663,23 @@ const FlowSearch = () => {
               <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Category</label>
               <div className="grid grid-cols-2 gap-3">
                 <button type="button" onClick={() => { setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setFanCategory('axial'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} className={`border rounded-lg p-3 hover:shadow transition ${fanCategory==='axial' ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
-                  <img src={AxialCategoryImg} alt="Axial" className="w-full h-24 object-contain" />
+                  <img 
+                    src={AxialCategoryImg} 
+                    alt="Axial" 
+                    className="w-full h-24 object-contain" 
+                    loading="eager"
+                    decoding="async"
+                  />
                   <div className="mt-2 text-center text-[#1F3B73] text-sm font-medium">Axial</div>
                 </button>
                 <button type="button" onClick={() => { setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setFanCategory('centrifugal'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} className={`border rounded-lg p-3 hover:shadow transition ${fanCategory==='centrifugal' ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
-                  <img src={CentrifugalCategoryImg} alt="Centrifugal" className="w-full h-24 object-contain" />
+                  <img 
+                    src={CentrifugalCategoryImg} 
+                    alt="Centrifugal" 
+                    className="w-full h-24 object-contain" 
+                    loading="eager"
+                    decoding="async"
+                  />
                   <div className="mt-2 text-center text-[#1F3B73] text-sm font-medium">Centrifugal</div>
                 </button>
               </div>
@@ -1529,7 +1717,13 @@ const FlowSearch = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {axialTypes.map(t => (
                     <button key={t.id} type="button" onClick={() => { setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); onSelectAxial(t.code); }} className={`border rounded-lg p-2 hover:shadow transition ${axialType===t.code ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
-                      {t.img && <img src={t.img} alt={t.name} className="w-full h-20 object-contain" />}
+                      {t.img && <img 
+                        src={t.img} 
+                        alt={t.name} 
+                        className="w-full h-20 object-contain" 
+                        loading="lazy"
+                        decoding="async"
+                      />}
                       <div className="mt-2 text-xs text-[#1F3B73] text-center">{t.name}</div>
                     </button>
                   ))}
@@ -1539,7 +1733,13 @@ const FlowSearch = () => {
                     <div className="text-[#1F3B73] text-sm font-semibold mb-3">{`${axialType} - ${axialTypes.find(a=>a.code === axialType)?.name}`}</div>
                     <div className="flex items-center gap-4">
                       {(() => { const sel = axialTypes.find(t => t.code === axialType); return sel?.img ? (
-                        <img src={sel.img} alt={sel.name} className="w-full max-w-md h-56 object-contain mx-auto" />
+                        <img 
+                          src={sel.img} 
+                          alt={sel.name} 
+                          className="w-full max-w-md h-56 object-contain mx-auto" 
+                          loading="lazy"
+                          decoding="async"
+                        />
                       ) : null; })()}
                     </div>
                   </div>
@@ -1567,7 +1767,13 @@ const FlowSearch = () => {
                     {currentSeriesCards.map(card => (
                       <button key={card.code} type="button" onClick={()=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setSeries(card.code); }} className={`border rounded-lg p-2 hover:shadow transition ${series===card.code ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'} ${(!pressureClass || (pressureClass==='low' && !lowConfig)) ? 'opacity-50 pointer-events-none' : ''}`}>
                         {card.img ? (
-                          <img src={card.img} alt={card.name} className="w-full h-20 object-contain" />
+                          <img 
+                            src={card.img} 
+                            alt={card.name} 
+                            className="w-full h-20 object-contain" 
+                            loading="lazy"
+                            decoding="async"
+                          />
                         ) : (
                           <div className="w-full h-20 flex items-center justify-center text-xs text-[#64748B]">{card.name}</div>
                         )}
@@ -1581,7 +1787,13 @@ const FlowSearch = () => {
                       <div className="text-[#1F3B73] text-sm font-semibold mb-3">{`${series} - Centrifugal Type`}</div>
                       <div className="flex items-center gap-4">
                         {(() => { const card = currentSeriesCards.find(c => c.code === series); return card?.img ? (
-                          <img src={card.img} alt={card.name} className="w-full max-w-md h-56 object-contain mx-auto" />
+                          <img 
+                            src={card.img} 
+                            alt={card.name} 
+                            className="w-full max-w-md h-56 object-contain mx-auto" 
+                            loading="lazy"
+                            decoding="async"
+                          />
                         ) : null; })()}
                       </div>
                     </div>
@@ -1664,7 +1876,7 @@ const FlowSearch = () => {
                       onClick={() => handleModelSelect(idx)} 
                       className={`text-left p-3 rounded border transition-all ${selectedIndex===idx ? 'border-[#93C5FD] ring-2 ring-[#93C5FD]' : 'border-[#E5EDFF]'}`}
                     >
-                      <div className="text-[#1E3A8A] font-medium">Model: {r.model?.name} - {axialType || series}</div>
+                      <div className="text-[#1E3A8A] font-medium">Model: {axialType || series} - {r.model?.name}</div>
                       <div className="text-[#334155] text-sm">RPM: {r.rpm?.rpm}</div>
                       <div className="flex items-center gap-2 mt-2">
                         {isLoading ? (
@@ -1785,19 +1997,30 @@ const FlowSearch = () => {
                                 </div>
                               </div>
                               <div className="h-80">
-                                {pressureChartView === 'total' ? (
-                                  <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
+                                {pressureChartData.datasets.length > 0 ? (
+                                  <>
+                                    {pressureChartView === 'total' ? (
+                                      <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
+                                    ) : (
+                                      <Scatter ref={staticPressureChartRef} data={staticPressureChartData} options={staticPressureChartOptions} />
+                                    )}
+                                    {/* Hidden counterpart to ensure refs are available for export */}
+                                    <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
+                                      {pressureChartView === 'total' ? (
+                                        <Scatter ref={staticPressureChartRef} data={staticPressureChartData} options={staticPressureChartOptions} />
+                                      ) : (
+                                        <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
+                                      )}
+                                    </div>
+                                  </>
                                 ) : (
-                                  <Scatter ref={staticPressureChartRef} data={staticPressureChartData} options={staticPressureChartOptions} />
+                                  <div className="flex items-center justify-center h-full text-gray-500">
+                                    <div className="text-center">
+                                      <div className="text-lg mb-2">No Data Available</div>
+                                      <div className="text-sm">Chart data is not available for this model</div>
+                                    </div>
+                                  </div>
                                 )}
-                                {/* Hidden counterpart to ensure refs are available for export */}
-                                <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
-                                  {pressureChartView === 'total' ? (
-                                    <Scatter ref={staticPressureChartRef} data={staticPressureChartData || { datasets: [] }} options={staticPressureChartOptions} />
-                                  ) : (
-                                    <Scatter ref={pressureChartRef} data={pressureChartData || { datasets: [] }} options={chartOptions} />
-                                  )}
-                                </div>
                               </div>
                             </div>
                             
@@ -1811,19 +2034,31 @@ const FlowSearch = () => {
                                 </div>
                               </div>
                               <div className="h-80">
-                                {chartView === 'power' ? (
-                                  <Scatter ref={powerChartRef} data={powerChartData} options={powerChartOptions} />
-                                ) : (
-                                  <Scatter ref={efficiencyChartRef} data={efficiencyChartData} options={efficiencyChartOptions} />
-                                )}
-                                {/* Hidden counterpart to ensure refs are available for export */}
-                                <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
-                                  {chartView === 'power' ? (
-                                    <Scatter ref={efficiencyChartRef} data={efficiencyChartData || { datasets: [] }} options={efficiencyChartOptions} />
+                                {(() => {
+                                  const currentData = chartView === 'power' ? powerChartData : efficiencyChartData;
+                                  const currentOptions = chartView === 'power' ? powerChartOptions : efficiencyChartOptions;
+                                  const currentRef = chartView === 'power' ? powerChartRef : efficiencyChartRef;
+                                  const hiddenRef = chartView === 'power' ? efficiencyChartRef : powerChartRef;
+                                  const hiddenData = chartView === 'power' ? efficiencyChartData : powerChartData;
+                                  const hiddenOptions = chartView === 'power' ? efficiencyChartOptions : powerChartOptions;
+
+                                  return currentData.datasets.length > 0 ? (
+                                    <>
+                                      <Scatter ref={currentRef} data={currentData} options={currentOptions} />
+                                      {/* Hidden counterpart to ensure refs are available for export */}
+                                      <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
+                                        <Scatter ref={hiddenRef} data={hiddenData} options={hiddenOptions} />
+                                      </div>
+                                    </>
                                   ) : (
-                                    <Scatter ref={powerChartRef} data={powerChartData || { datasets: [] }} options={powerChartOptions} />
-                                  )}
-                                </div>
+                                    <div className="flex items-center justify-center h-full text-gray-500">
+                                      <div className="text-center">
+                                        <div className="text-lg mb-2">No Data Available</div>
+                                        <div className="text-sm">Chart data is not available for this model</div>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </>
@@ -1865,18 +2100,13 @@ const FlowSearch = () => {
                                       {/* Image */}
                                       {variant.image && (
                                         <div className="flex justify-center">
-                                          <img 
+                                          <ProgressiveImage 
                                             src={resolveUiImage(variant.image)} 
                                             alt={variant.name}
                                             className="max-w-full h-auto max-h-96 object-contain"
-                                            onError={(e) => {
-                                              e.target.style.display = 'none';
-                                              e.target.nextSibling.style.display = 'block';
-                                            }}
+                                            loading="lazy"
+                                            decoding="async"
                                           />
-                                          <div style={{display: 'none'}} className="text-[#9CA3AF] text-sm">
-                                            Image not available
-                                          </div>
                                         </div>
                                       )}
                                       
@@ -1921,18 +2151,13 @@ const FlowSearch = () => {
                             <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
                               <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">{dimensionsData.name}</h3>
                               <div className="flex justify-center">
-                                <img 
+                                <ProgressiveImage 
                                   src={resolveUiImage(dimensionsData.image)} 
                                   alt={dimensionsData.name}
                                   className="max-w-full h-auto max-h-96 object-contain"
-                                  onError={(e) => {
-                                    e.target.style.display = 'none';
-                                    e.target.nextSibling.style.display = 'block';
-                                  }}
+                                  loading="lazy"
+                                  decoding="async"
                                 />
-                                <div style={{display: 'none'}} className="text-[#9CA3AF] text-sm">
-                                  Image not available
-                                </div>
                               </div>
                             </div>
                           )}
@@ -1976,20 +2201,30 @@ const FlowSearch = () => {
                       );
                     })()}
                     
-                    {/* Hidden Charts for PDF Export - Always render these charts but hide them */}
-                    <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
-                      {/* Total Pressure Chart */}
-                      <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
-                      
-                      {/* Static Pressure Chart */}
-                      <Scatter ref={staticPressureChartRef} data={staticPressureChartData} options={staticPressureChartOptions} />
-                      
-                      {/* Power Chart */}
-                      <Scatter ref={powerChartRef} data={powerChartData} options={powerChartOptions} />
-                      
-                      {/* Efficiency Chart */}
-                      <Scatter ref={efficiencyChartRef} data={efficiencyChartData} options={efficiencyChartOptions} />
-                    </div>
+                    {/* Hidden Charts for PDF Export - render only when modal is open */}
+                    {showPdfModal && (
+                      <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
+                        {/* Total Pressure Chart */}
+                        {pressureChartData.datasets.length > 0 && (
+                          <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
+                        )}
+                        
+                        {/* Static Pressure Chart */}
+                        {staticPressureChartData.datasets.length > 0 && (
+                          <Scatter ref={staticPressureChartRef} data={staticPressureChartData} options={staticPressureChartOptions} />
+                        )}
+                        
+                        {/* Power Chart */}
+                        {powerChartData.datasets.length > 0 && (
+                          <Scatter ref={powerChartRef} data={powerChartData} options={powerChartOptions} />
+                        )}
+                        
+                        {/* Efficiency Chart */}
+                        {efficiencyChartData.datasets.length > 0 && (
+                          <Scatter ref={efficiencyChartRef} data={efficiencyChartData} options={efficiencyChartOptions} />
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
