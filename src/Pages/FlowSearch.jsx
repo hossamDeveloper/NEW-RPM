@@ -117,6 +117,10 @@ const FlowSearch = () => {
   const getCentrifugalImage = (code) => {
     if (!code) return undefined;
     const wanted = String(code).trim().toUpperCase();
+    let aliasWanted = wanted;
+    if (wanted.includes('FAN SECTION TYPE')) {
+      aliasWanted = wanted.includes('NBR-D') ? 'NBR-D' : (wanted.includes('NBS-D') ? 'NBS-D' : wanted);
+    }
 
     // Helper to get filename without extension in UPPERCASE
     const getBase = (p) => {
@@ -129,7 +133,7 @@ const FlowSearch = () => {
     // 1) Exact filename match (e.g., NBR.png should match code NBR and not NBR-D)
     for (const path in centrifugalImages) {
       const base = getBase(path);
-      if (base === wanted) {
+      if (base === wanted || base === aliasWanted) {
         const mod = centrifugalImages[path];
         return mod?.default || mod;
       }
@@ -139,7 +143,8 @@ const FlowSearch = () => {
     for (const path in centrifugalImages) {
       const mod = centrifugalImages[path];
       const url = mod?.default || mod;
-      if (path.toUpperCase().includes(wanted)) return url;
+      const upper = path.toUpperCase();
+      if (upper.includes(wanted) || upper.includes(aliasWanted)) return url;
     }
     return undefined;
   };
@@ -247,7 +252,7 @@ const FlowSearch = () => {
   const getSeriesOptions = () => {
     if (pressureClass === 'low') {
       if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP'];
-      if (lowConfig === 'didw') return ['NBR-D', 'NBS-D'];
+      if (lowConfig === 'didw') return ['NBR-D', 'NBS-D', 'NBR-D FAN SECTION TYPE', 'NBS-D FAN SECTION TYPE'];
       return [];
     }
     if (pressureClass === 'medium') return ['NPD', 'NPE'];
@@ -257,7 +262,7 @@ const FlowSearch = () => {
   
   // Get all possible series for image mapping
   const getAllSeriesOptions = () => {
-    return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP', 'NBR-D', 'NBS-D', 'NPD', 'NPE', 'NPF'];
+    return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP', 'NBR-D', 'NBS-D', 'NBR-D FAN SECTION TYPE', 'NBS-D FAN SECTION TYPE', 'NPD', 'NPE', 'NPF'];
   };
   
   const seriesCards = getAllSeriesOptions().map(s => ({
@@ -370,6 +375,14 @@ const FlowSearch = () => {
     }
   };
 
+  // Normalize series aliases to canonical codes for logic/API
+  const normalizeSeries = (val) => {
+    const s = String(val || '').trim().toUpperCase();
+    if (s === 'NBR-D FAN SECTION TYPE') return 'NBR-D';
+    if (s === 'NBS-D FAN SECTION TYPE') return 'NBS-D';
+    return s;
+  };
+
   const searchMutation = useMutation({
     mutationFn: (payload) => api.post('/search', payload),
     onSuccess: (res) => {
@@ -382,7 +395,7 @@ const FlowSearch = () => {
         if (
           fanCategory === 'centrifugal' &&
           (
-            ['NBR-D','NBR_D','NBS-D','NBS_D'].includes(String(series).toUpperCase())
+            ['NBR-D','NBR_D','NBS-D','NBS_D'].includes(normalizeSeries(series))
           )
         ) {
           const rpmFactor = 1.0063559;
@@ -462,7 +475,7 @@ const FlowSearch = () => {
       if (
         fanCategory === 'centrifugal' &&
         (
-          ['NBR-D','NBR_D','NBS-D','NBS_D'].includes(String(series).toUpperCase())
+          ['NBR-D','NBR_D','NBS-D','NBS_D'].includes(normalizeSeries(series))
         )
       ) {
         const rpmFactor = 1.0063559;
@@ -562,14 +575,15 @@ const FlowSearch = () => {
 
     if (fanCategory === 'centrifugal') {
       payload.pressureType = pressureClass; // low | medium | high
+      const seriesNorm = normalizeSeries(series);
 
-      if (['NBR-D','NBR_D','NBS-D','NBS_D'].includes(String(series))) {
+      if (['NBR-D','NBR_D','NBS-D','NBS_D'].includes(seriesNorm)) {
         payload.configurationType = 'SISW'
         payload.flowRate = Number(payload.flowRate) / 2;
-        payload.centrifugalType = (String(series).toUpperCase().startsWith('NBR')) ? 'NBR' : 'NBS'
+        payload.centrifugalType = (seriesNorm.startsWith('NBR')) ? 'NBR' : 'NBS'
   console.log('payload',payload);
 
-      } else if (['NBRS', 'NC', 'NBXI', 'NP'].includes(String(series).toUpperCase())) {
+      } else if (['NBRS', 'NC', 'NBXI', 'NP'].includes(seriesNorm)) {
         // Map NBRS, NC, NBXI, NP to NBR with SISW configuration
         payload.configurationType = 'SISW'
         payload.centrifugalType = 'NBR'
@@ -577,7 +591,7 @@ const FlowSearch = () => {
 
       } else {
         payload.configurationType = pressureClass === 'low' ? lowConfig.toUpperCase() : undefined
-        payload.centrifugalType = series
+        payload.centrifugalType = seriesNorm
   console.log('payload',payload);
 
       }
@@ -697,6 +711,7 @@ const FlowSearch = () => {
   const pressureChartData = (() => {
     if (!curvePoints || curvePoints.length === 0) {
       if (!closestPoint) return { datasets: [] };
+      if (Number(closestPoint.staticPressure) < 0) return { datasets: [] };
       
       return {
         datasets: [
@@ -716,93 +731,100 @@ const FlowSearch = () => {
       };
     }
 
+    // Filter out any points whose staticPressure is negative; also hide their counterparts in total chart
+    const filtered = (curvePoints || []).filter(p => Number(p.staticPressure) >= 0);
+
     return {
-      datasets: [
-        {
-          label: 'Total Pressure Curve',
-          data: curvePoints.map(p => ({ 
-            x: convertChartFlowValue(parseFloat(p.flowRate)), 
-            y: convertChartPressureValue(parseFloat(p.totalPressure)) 
+    datasets: [
+      {
+        label: 'Total Pressure Curve',
+          data: filtered.map(p => ({ 
+          x: convertChartFlowValue(parseFloat(p.flowRate)), 
+          y: convertChartPressureValue(parseFloat(p.totalPressure)) 
           })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
-          backgroundColor: 'rgba(59,130,246,0.3)',
-          borderColor: 'rgb(59,130,246)',
-          borderWidth: 2,
-          pointRadius: 1.3,
-          pointHoverRadius: 3,
-          pointBackgroundColor: 'rgb(59,130,246)',
-          pointBorderColor: 'rgba(59,130,246,0.7)',
-          showLine: true,
-          tension: 0.35,
-        },
-        ...(closestPoint ? [{
-          label: 'Working Point',
-          data: [{ 
-            x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
-            y: convertChartPressureValue(parseFloat(closestPoint.totalPressure)) 
-          }],
-          backgroundColor: 'rgb(251,146,60)',
-          borderColor: 'rgb(234,88,12)',
-          borderWidth: 3,
-          pointRadius: 8,
-          showLine: false,
-        }] : [])
-      ]
+        backgroundColor: 'rgba(59,130,246,0.3)',
+        borderColor: 'rgb(59,130,246)',
+        borderWidth: 2,
+        pointRadius: 1.3,
+        pointHoverRadius: 3,
+        pointBackgroundColor: 'rgb(59,130,246)',
+        pointBorderColor: 'rgba(59,130,246,0.7)',
+        showLine: true,
+        tension: 0.35,
+      },
+        ...((closestPoint && Number(closestPoint.staticPressure) >= 0) ? [{
+        label: 'Working Point',
+        data: [{ 
+          x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+          y: convertChartPressureValue(parseFloat(closestPoint.totalPressure)) 
+        }],
+        backgroundColor: 'rgb(251,146,60)',
+        borderColor: 'rgb(234,88,12)',
+        borderWidth: 3,
+        pointRadius: 8,
+        showLine: false,
+      }] : [])
+    ]
     };
   })();
 
   const staticPressureChartData = (() => {
     if (!curvePoints || curvePoints.length === 0) {
       if (!closestPoint) return { datasets: [] };
+      if (Number(closestPoint.staticPressure) < 0) return { datasets: [] };
       
       return {
-        datasets: [
-          { 
-            label: 'Working Point', 
-            data: [{ 
-              x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+    datasets: [
+      { 
+        label: 'Working Point', 
+        data: [{ 
+          x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
               y: convertChartPressureValue(Number(closestPoint.staticPressure)) 
-            }], 
-            backgroundColor: 'rgb(251,146,60)', 
-            borderColor: 'rgb(234,88,12)', 
-            borderWidth: 3, 
-            pointRadius: 8, 
-            showLine: false 
-          }
-        ]
+        }], 
+        backgroundColor: 'rgb(251,146,60)', 
+        borderColor: 'rgb(234,88,12)', 
+        borderWidth: 3, 
+        pointRadius: 8, 
+        showLine: false 
+      }
+    ]
       };
     }
 
+    // Filter out negative static pressure points entirely from this chart
+    const filtered = (curvePoints || []).filter(p => Number(p.staticPressure) >= 0);
+
     return {
-      datasets: [
-        {
-          label: 'Static Pressure Curve',
-          data: curvePoints.map(p => ({
-            x: convertChartFlowValue(parseFloat(p.flowRate)),
-            y: convertChartPressureValue(Number(p.staticPressure))
+    datasets: [
+      {
+        label: 'Static Pressure Curve',
+          data: filtered.map(p => ({
+          x: convertChartFlowValue(parseFloat(p.flowRate)),
+          y: convertChartPressureValue(Number(p.staticPressure))
           })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
-          backgroundColor: 'rgba(168,85,247,0.3)',
-          borderColor: 'rgb(168,85,247)',
-          borderWidth: 2,
-          pointRadius: 1.3,
-          pointHoverRadius: 3,
-          pointBackgroundColor: 'rgb(168,85,247)',
-          pointBorderColor: 'rgba(168,85,247,0.7)',
-          showLine: true,
-          tension: 0.35,
-        },
-        ...(closestPoint ? [{
-          label: 'Working Point',
-          data: [{ 
-            x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
-            y: convertChartPressureValue(Number(closestPoint.staticPressure)) 
-          }],
-          backgroundColor: 'rgb(251,146,60)',
-          borderColor: 'rgb(234,88,12)',
-          borderWidth: 3,
-          pointRadius: 8,
-          showLine: false,
-        }] : [])
-      ]
+          backgroundColor: 'rgba(59,130,246,0.3)',
+          borderColor: 'rgb(59,130,246)',
+        borderWidth: 2,
+        pointRadius: 1.3,
+        pointHoverRadius: 3,
+          pointBackgroundColor: 'rgb(59,130,246)',
+          pointBorderColor: 'rgba(59,130,246,0.7)',
+        showLine: true,
+        tension: 0.35,
+      },
+        ...((closestPoint && Number(closestPoint.staticPressure) >= 0) ? [{
+        label: 'Working Point',
+        data: [{ 
+          x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+          y: convertChartPressureValue(Number(closestPoint.staticPressure)) 
+        }],
+        backgroundColor: 'rgb(251,146,60)',
+        borderColor: 'rgb(234,88,12)',
+        borderWidth: 3,
+        pointRadius: 8,
+        showLine: false,
+      }] : [])
+    ]
     };
   })();
 
@@ -811,54 +833,54 @@ const FlowSearch = () => {
       if (!closestPoint) return { datasets: [] };
       
       return {
-        datasets: [
-          { 
-            label: 'Working Point', 
-            data: [{ 
-              x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
+    datasets: [
+      { 
+        label: 'Working Point', 
+        data: [{ 
+          x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
               y: parseFloat(closestPoint.brakePower) 
-            }], 
-            backgroundColor: 'rgb(251,146,60)', 
-            borderColor: 'rgb(234,88,12)', 
-            borderWidth: 3, 
-            pointRadius: 8, 
-            showLine: false 
-          }
-        ]
+        }], 
+        backgroundColor: 'rgb(251,146,60)', 
+        borderColor: 'rgb(234,88,12)', 
+        borderWidth: 3, 
+        pointRadius: 8, 
+        showLine: false 
+      }
+    ]
       };
     }
 
     return {
-      datasets: [
-        {
-          label: 'Brake Power Curve',
+    datasets: [
+      {
+        label: 'Brake Power Curve',
           data: curvePoints.map(p => ({ 
             x: convertChartFlowValue(parseFloat(p.flowRate)), 
             y: parseFloat(p.brakePower) 
           })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
-          backgroundColor: 'rgb(148, 148, 22 ,.3)',
-          borderColor: 'rgb(148, 148, 22)',
-          borderWidth: 2,
-          pointRadius: 1.3,
-          pointHoverRadius: 3,
-          pointBackgroundColor: 'rgb(99,102,241)',
-          pointBorderColor: 'rgba(150,150,20,0.7)',
-          showLine: true,
-          tension: 0.35,
-        },
-        ...(closestPoint ? [{
-          label: 'Working Point',
+        backgroundColor: 'rgb(148, 148, 22 ,.3)',
+        borderColor: 'rgb(148, 148, 22)',
+        borderWidth: 2,
+        pointRadius: 1.3,
+        pointHoverRadius: 3,
+        pointBackgroundColor: 'rgb(99,102,241)',
+        pointBorderColor: 'rgba(150,150,20,0.7)',
+        showLine: true,
+        tension: 0.35,
+      },
+      ...(closestPoint ? [{
+        label: 'Working Point',
           data: [{ 
             x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
             y: parseFloat(closestPoint.brakePower) 
           }],
-          backgroundColor: 'rgb(251,146,60)',
-          borderColor: 'rgb(234,88,12)',
-          borderWidth: 3,
-          pointRadius: 8,
-          showLine: false,
-        }] : [])
-      ]
+        backgroundColor: 'rgb(251,146,60)',
+        borderColor: 'rgb(234,88,12)',
+        borderWidth: 3,
+        pointRadius: 8,
+        showLine: false,
+      }] : [])
+    ]
     };
   })();
 
@@ -867,7 +889,7 @@ const FlowSearch = () => {
       if (!closestPoint) return { datasets: [] };
       
       return {
-        datasets: [
+    datasets: [
           { 
             label: 'Working Point', 
             data: [{ 
@@ -885,36 +907,36 @@ const FlowSearch = () => {
     }
 
     return {
-      datasets: [
-        {
-          label: 'Efficiency Curve',
+    datasets: [
+      {
+        label: 'Efficiency Curve',
           data: curvePoints.map(p => ({ 
             x: convertChartFlowValue(parseFloat(p.flowRate)), 
             y: parseFloat(p.efficiency) 
           })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
-          backgroundColor: 'rgba(16,185,129,0.25)',
-          borderColor: 'rgb(5,150,105)',
-          borderWidth: 2,
-          pointRadius: 1.3,
-          pointHoverRadius: 3,
-          pointBackgroundColor: 'rgb(5,150,105)',
-          pointBorderColor: 'rgba(5,150,105,0.7)',
-          showLine: true,
-          tension: 0.35,
-        },
-        ...(closestPoint ? [{
-          label: 'Working Point',
+        backgroundColor: 'rgba(16,185,129,0.25)',
+        borderColor: 'rgb(5,150,105)',
+        borderWidth: 2,
+        pointRadius: 1.3,
+        pointHoverRadius: 3,
+        pointBackgroundColor: 'rgb(5,150,105)',
+        pointBorderColor: 'rgba(5,150,105,0.7)',
+        showLine: true,
+        tension: 0.35,
+      },
+      ...(closestPoint ? [{
+        label: 'Working Point',
           data: [{ 
             x: convertChartFlowValue(parseFloat(closestPoint.flowRate)), 
             y: parseFloat(closestPoint.efficiency) 
           }],
-          backgroundColor: 'rgb(251,146,60)',
-          borderColor: 'rgb(234,88,12)',
-          borderWidth: 3,
-          pointRadius: 8,
-          showLine: false,
-        }] : [])
-      ]
+        backgroundColor: 'rgb(251,146,60)',
+        borderColor: 'rgb(234,88,12)',
+        borderWidth: 3,
+        pointRadius: 8,
+        showLine: false,
+      }] : [])
+    ]
     };
   })();
 
@@ -1626,7 +1648,7 @@ const FlowSearch = () => {
         <img
           src={getOptimizedImageSrc(src)}
           alt={alt}
-          className={`transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+          className={`transition-opacity object-contain w-full h-full duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
           onLoad={handleLoad}
           onError={handleError}
           {...props}
@@ -1999,19 +2021,19 @@ const FlowSearch = () => {
                               <div className="h-80">
                                 {pressureChartData.datasets.length > 0 ? (
                                   <>
-                                    {pressureChartView === 'total' ? (
-                                      <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
-                                    ) : (
-                                      <Scatter ref={staticPressureChartRef} data={staticPressureChartData} options={staticPressureChartOptions} />
-                                    )}
-                                    {/* Hidden counterpart to ensure refs are available for export */}
-                                    <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
-                                      {pressureChartView === 'total' ? (
+                                {pressureChartView === 'total' ? (
+                                  <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
+                                ) : (
+                                  <Scatter ref={staticPressureChartRef} data={staticPressureChartData} options={staticPressureChartOptions} />
+                                )}
+                                {/* Hidden counterpart to ensure refs are available for export */}
+                                <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
+                                  {pressureChartView === 'total' ? (
                                         <Scatter ref={staticPressureChartRef} data={staticPressureChartData} options={staticPressureChartOptions} />
-                                      ) : (
+                                  ) : (
                                         <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
-                                      )}
-                                    </div>
+                                  )}
+                                </div>
                                   </>
                                 ) : (
                                   <div className="flex items-center justify-center h-full text-gray-500">
@@ -2045,8 +2067,8 @@ const FlowSearch = () => {
                                   return currentData.datasets.length > 0 ? (
                                     <>
                                       <Scatter ref={currentRef} data={currentData} options={currentOptions} />
-                                      {/* Hidden counterpart to ensure refs are available for export */}
-                                      <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
+                                {/* Hidden counterpart to ensure refs are available for export */}
+                                <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
                                         <Scatter ref={hiddenRef} data={hiddenData} options={hiddenOptions} />
                                       </div>
                                     </>
@@ -2055,7 +2077,7 @@ const FlowSearch = () => {
                                       <div className="text-center">
                                         <div className="text-lg mb-2">No Data Available</div>
                                         <div className="text-sm">Chart data is not available for this model</div>
-                                      </div>
+                                </div>
                                     </div>
                                   );
                                 })()}
@@ -2103,7 +2125,7 @@ const FlowSearch = () => {
                                           <ProgressiveImage 
                                             src={resolveUiImage(variant.image)} 
                                             alt={variant.name}
-                                            className="max-w-full h-auto max-h-96 object-contain"
+                                            className="max-w-full h-auto max-h-96 object-cover"
                                             loading="lazy"
                                             decoding="async"
                                           />
@@ -2203,27 +2225,27 @@ const FlowSearch = () => {
                     
                     {/* Hidden Charts for PDF Export - render only when modal is open */}
                     {showPdfModal && (
-                      <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
-                        {/* Total Pressure Chart */}
+                    <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
+                      {/* Total Pressure Chart */}
                         {pressureChartData.datasets.length > 0 && (
-                          <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
+                      <Scatter ref={pressureChartRef} data={pressureChartData} options={chartOptions} />
                         )}
-                        
-                        {/* Static Pressure Chart */}
+                      
+                      {/* Static Pressure Chart */}
                         {staticPressureChartData.datasets.length > 0 && (
-                          <Scatter ref={staticPressureChartRef} data={staticPressureChartData} options={staticPressureChartOptions} />
+                      <Scatter ref={staticPressureChartRef} data={staticPressureChartData} options={staticPressureChartOptions} />
                         )}
-                        
-                        {/* Power Chart */}
+                      
+                      {/* Power Chart */}
                         {powerChartData.datasets.length > 0 && (
-                          <Scatter ref={powerChartRef} data={powerChartData} options={powerChartOptions} />
+                      <Scatter ref={powerChartRef} data={powerChartData} options={powerChartOptions} />
                         )}
-                        
-                        {/* Efficiency Chart */}
+                      
+                      {/* Efficiency Chart */}
                         {efficiencyChartData.datasets.length > 0 && (
-                          <Scatter ref={efficiencyChartRef} data={efficiencyChartData} options={efficiencyChartOptions} />
+                      <Scatter ref={efficiencyChartRef} data={efficiencyChartData} options={efficiencyChartOptions} />
                         )}
-                      </div>
+                    </div>
                     )}
                   </div>
                 )}

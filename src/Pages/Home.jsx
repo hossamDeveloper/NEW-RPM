@@ -17,7 +17,7 @@ const Home = () => {
       >
         <img src={logo} alt="RPM Logo" className=" h-32 mb-4 drop-shadow-xl" />
         <h1 className="text-4xl md:text-5xl font-extrabold text-[#1E3A8A] mb-4 text-center">
-          Welcome to <span className="text-[#2563EB]">Nobel Software</span>
+          Welcome to <span className="text-[#2563EB]">NOBEL Software</span>
           <span className="inline-block align-middle ml-2 w-2 h-2 rounded-full bg-[#F97316]"></span>
         </h1>
         <p className="text-[#334155] text-lg md:text-xl max-w-2xl text-center mb-2">
