@@ -119,7 +119,7 @@ const FlowSearch = () => {
     const wanted = String(code).trim().toUpperCase();
     let aliasWanted = wanted;
     if (wanted.includes('FAN SECTION TYPE')) {
-      aliasWanted = wanted.includes('NBR-D') ? 'NBR-D' : (wanted.includes('NBS-D') ? 'NBS-D' : wanted);
+      aliasWanted = wanted.includes('NBR-D') ? 'NBR-D FAN SECTION TYPE' : (wanted.includes('NBS-D') ? 'NBS-D FAN SECTION TYPE' : wanted);
     }
 
     // Helper to get filename without extension in UPPERCASE
@@ -398,7 +398,8 @@ const FlowSearch = () => {
             ['NBR-D','NBR_D','NBS-D','NBS_D'].includes(normalizeSeries(series))
           )
         ) {
-          const rpmFactor = 1.0063559;
+          const seriesNorm = normalizeSeries(series);
+          const rpmFactor = ['NBS-D','NBS_D'].includes(seriesNorm) ? 1.012974052 : 1.0063559;
           const flowFactor = 2;
           const lpaAdd = 5.8;
           const brakePowerFactor = 2.059242;
@@ -478,7 +479,8 @@ const FlowSearch = () => {
           ['NBR-D','NBR_D','NBS-D','NBS_D'].includes(normalizeSeries(series))
         )
       ) {
-        const rpmFactor = 1.0063559;
+        const seriesNorm = normalizeSeries(series);
+        const rpmFactor = ['NBS-D','NBS_D'].includes(seriesNorm) ? 1.012974052 : 1.0063559;
         const flowFactor = 2;
         const lpaAdd = 5.8;
         const brakePowerFactor = 2.059242;
