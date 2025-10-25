@@ -359,11 +359,24 @@ const FlowSearch = () => {
   };
 
   const beltHidden = isJetFan;
-  const driveOptions = [
-    'DIRECT_DRIVE',
-    ...(beltHidden ? [] : ['BELT_DRIVE']),
-    'DIRECT_DRIVE_WITH_FREQUENCY_DRIVE'
-  ];
+  
+  // Check if it's NBR-D FAN SECTION TYPE or NBS-D FAN SECTION TYPE
+  const isFanSectionType = series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE';
+  
+  const driveOptions = isFanSectionType 
+    ? ['BELT_DRIVE'] // Only BELT_DRIVE for Fan Section Type
+    : [
+        'DIRECT_DRIVE',
+        ...(beltHidden ? [] : ['BELT_DRIVE']),
+        'DIRECT_DRIVE_WITH_FREQUENCY_DRIVE'
+      ];
+
+  // Auto-set driveType to BELT_DRIVE when Fan Section Type is selected
+  useEffect(() => {
+    if (isFanSectionType && driveType !== 'BELT_DRIVE') {
+      setDriveType('BELT_DRIVE');
+    }
+  }, [isFanSectionType, driveType]);
 
   // Mapping helpers
   const mapDriveToCode = (drive) => {
@@ -410,7 +423,7 @@ const FlowSearch = () => {
           results = results.map((r) => {
             const rpmObj = r?.rpm || {};
             const rpmVal = Number(rpmObj.rpm);
-            const transformedRpmVal = Number.isFinite(rpmVal) ? rpmVal * rpmFactor : rpmObj.rpm;
+            const transformedRpmVal = Number.isFinite(rpmVal) ? Math.round(rpmVal * rpmFactor) : rpmObj.rpm;
             const newRpm = { ...rpmObj, rpm: transformedRpmVal };
 
           const cp = r?.closestPoint || {};
@@ -503,7 +516,7 @@ const FlowSearch = () => {
           const lpa = Number(p.lpa);
           return {
             ...p,
-            rpm: Number.isFinite(rpm) ? rpm * rpmFactor : p.rpm,
+            rpm: Number.isFinite(rpm) ? Math.round(rpm * rpmFactor) : p.rpm,
             flowRate: Number.isFinite(flow) ? flow * flowFactor : p.flowRate,
             dynamicPressure: Number.isFinite(dynP) ? dynP * dynamicPressureFactor : dynBase,
             totalPressure: (Number.isFinite(dynP) ? dynP * dynamicPressureFactor : dynBase) + (Number.isFinite(statP) ? statP : 0),
@@ -1299,9 +1312,9 @@ const FlowSearch = () => {
         // Determine which dimensions set to use (axial types or centrifugal NBR variants)
         const typeKeyForPdf = getCurrentDimensionsType();
         let dims = null;
-        if (typeKeyForPdf === 'NBR') {
-          // Use full NBR object with variants to print both NBR1 and NBR2
-          dims = dimensionsData['NBR'] || null;
+        if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
+          // Use full object with variants for NBR, NBR-D, and NBS-D
+          dims = dimensionsData[typeKeyForPdf] || null;
         } else if (typeKeyForPdf) {
           dims = getDimensionsData(typeKeyForPdf, selected?.model?.name);
         }
@@ -1318,9 +1331,29 @@ const FlowSearch = () => {
           doc.text('Dimensions', 40, y);
           y += 20;
           
-          // Special handling for types with variants (NEID, NBR)
-          if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR')) && dims.variants) {
-            for (const [variantIndex, variant] of dims.variants.entries()) {
+          // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D)
+          if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR') || (typeKeyForPdf === 'NBR_D') || (typeKeyForPdf === 'NBS_D')) && dims.variants) {
+            // Filter variants based on selected series
+            const filteredVariants = dims.variants.filter(variant => {
+              if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') {
+                return variant.name.includes('Fan Section Type');
+              }
+              if (series === 'NBR-D' || series === 'NBS-D') {
+                return variant.name.includes('Dimensions'); // Show only Dimensions variant for NBR-D/NBS-D
+              }
+              if (axialType === 'NEID') {
+                // For NEID, show only the variant that contains the selected model
+                const modelName = selected?.model?.name || '';
+                return variant.data.some(row => 
+                  row.model === modelName || 
+                  row.model.includes(modelName) || 
+                  modelName.includes(row.model)
+                );
+              }
+              return true; // Show all variants for other types
+            });
+            
+            for (const [variantIndex, variant] of filteredVariants.entries()) {
               // Check if we need a new page for each variant
               if (y + 250 > pageHeight - 40) {
                 doc.addPage();
@@ -1339,8 +1372,11 @@ const FlowSearch = () => {
               const startY = y;
               
               // Left column: Dimensions data
+              // Extract model number from selected model name (e.g., "NBR-D 310" -> "310")
+              const modelName = selected?.model?.name || '';
+              const modelNumber = modelName.replace(/^[A-Z-]+\s*/, '').trim();
               const selectedModelData = variant.data.find(row => 
-                row.model.includes(selected?.model?.name || '')
+                row.model === modelNumber || row.model.includes(modelNumber) || modelName.includes(row.model)
               );
               
               if (selectedModelData) {
@@ -1568,6 +1604,8 @@ const FlowSearch = () => {
     if (fanCategory === 'axial') return axialType || null;
     if (fanCategory === 'centrifugal') {
       if (['NBR', 'NBS', 'NBRS'].includes(String(series))) return 'NBR';
+      if (series === 'NBR-D' || series === 'NBR_D' || series === 'NBR-D FAN SECTION TYPE') return 'NBR_D';
+      if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D FAN SECTION TYPE') return 'NBS_D';
     }
     return null;
   };
@@ -1575,8 +1613,8 @@ const FlowSearch = () => {
   const getCurrentDimensionsData = () => {
     const typeKey = getCurrentDimensionsType();
     if (!typeKey || !selected?.model?.name) return null;
-    // For types with multiple variants (e.g., NEID, NBR), return the full type with variants
-    if (typeKey === 'NBR' || axialType === 'NEID') {
+    // For types with multiple variants (e.g., NEID, NBR, NBR-D, NBS-D), return the full type with variants
+    if (typeKey === 'NBR' || typeKey === 'NBR_D' || typeKey === 'NBS_D' || axialType === 'NEID') {
       return dimensionsData[typeKey] || null;
     }
     return getDimensionsData(typeKey, selected.model.name);
@@ -1844,7 +1882,7 @@ const FlowSearch = () => {
               <div>
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Flow Rate</label>
                 <div className="flex gap-2">
-                  <input type="number" step="any" name="flowRate" value={searchData.flowRate} onChange={(e)=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter flow rate" />
+                  <input type="number" step="any" name="flowRate" value={searchData.flowRate} onChange={(e)=>{ searchMutation.reset(); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); } }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter flow rate" />
                   <select value={flowUnit} onChange={handleFlowUnitChange} className="px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                     <option value="m3/s">m3/s</option>
                     <option value="m3/hr">m3/hr</option>
@@ -1857,7 +1895,7 @@ const FlowSearch = () => {
               <div>
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Static Pressure</label>
                 <div className="flex gap-2">
-                  <input type="number" step="any" name="staticPressure" value={isJetFan ? '10' : searchData.staticPressure} onChange={(e)=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} disabled={isJetFan} readOnly={isJetFan} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter static pressure" />
+                  <input type="number" step="any" name="staticPressure" value={isJetFan ? '10' : searchData.staticPressure} onChange={(e)=>{ searchMutation.reset(); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); } }} disabled={isJetFan} readOnly={isJetFan} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter static pressure" />
                   <select value={pressureUnit} onChange={handlePressureUnitChange} disabled={isJetFan} className="px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                     <option value="Pa">Pa</option>
                     <option value="InWc">InWc</option>
@@ -2105,13 +2143,37 @@ const FlowSearch = () => {
                         );
                       }
 
-                      // Special handling for types with variants (NEID, NBR)
-                      if (((axialType === 'NEID') || (getCurrentDimensionsType() === 'NBR')) && dimensionsData.variants) {
+                      // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D)
+                      const currentType = getCurrentDimensionsType();
+                      if (((axialType === 'NEID') || (currentType === 'NBR') || (currentType === 'NBR_D') || (currentType === 'NBS_D')) && dimensionsData.variants) {
+                        // Filter variants based on selected series
+                        const filteredVariants = dimensionsData.variants.filter(variant => {
+                          if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') {
+                            return variant.name.includes('Fan Section Type');
+                          }
+                          if (series === 'NBR-D' || series === 'NBS-D') {
+                            return variant.name.includes('Dimensions'); // Show only Dimensions variant for NBR-D/NBS-D
+                          }
+                          if (axialType === 'NEID') {
+                            // For NEID, show only the variant that contains the selected model
+                            const modelName = selected?.model?.name || '';
+                            return variant.data.some(row => 
+                              row.model === modelName || 
+                              row.model.includes(modelName) || 
+                              modelName.includes(row.model)
+                            );
+                          }
+                          return true; // Show all variants for other types
+                        });
+                        
                         return (
                           <div className="space-y-6">
-                            {dimensionsData.variants.map((variant, variantIndex) => {
+                            {filteredVariants.map((variant, variantIndex) => {
+                              // Extract model number from selected model name (e.g., "NBR-D 310" -> "310")
+                              const modelName = selected?.model?.name || '';
+                              const modelNumber = modelName.replace(/^[A-Z-]+\s*/, '').trim();
                               const selectedModelData = variant.data.find(row => 
-                                row.model.includes(selected?.model?.name || '')
+                                row.model === modelNumber || row.model.includes(modelNumber) || modelName.includes(row.model)
                               );
                               
                               return (
