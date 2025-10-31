@@ -378,12 +378,6 @@ const FlowSearch = () => {
     }
   }, [isFanSectionType, driveType]);
 
-  useEffect(() => {
-    if (fanCategory === 'axial' && activeTab === 'dimensions') {
-      setActiveTab('configuration');
-    }
-  }, [fanCategory, activeTab]);
-
   // Mapping helpers
   const mapDriveToCode = (drive) => {
     switch (drive) {
@@ -674,17 +668,17 @@ const FlowSearch = () => {
     maintainAspectRatio: false,
     animation: false,
     plugins: {
-      legend: { position: 'top', labels: { color: '#1F2937', font: { size: 14, weight: '600' }, padding: 20 } },
+      legend: { position: 'top', labels: { color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: 20 } },
       title: { display: true, text: `Flow Rate vs Total Pressure (${getFlowUnitLabel()} / ${getPressureUnitLabel()})`, color: '#1F2937', font: { size: 16, weight: 'bold' }, padding: { top: 10, bottom: 20 } },
       tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', padding: 12, titleColor: 'white', bodyColor: 'white', titleFont: { size: 14, weight: 'bold' }, bodyFont: { size: 13 },
         callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)} ${getPressureUnitLabel()}`]; } } }
     },
     scales: {
-      x: { type: 'linear', position: 'bottom', title: { display: true, text: `Flow Rate (${getFlowUnitLabel()})`, color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { top: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: { color: '#1F2937', font: { size: 12, weight: '600' } }, beginAtZero: true, min: 0 },
-      y: { type: 'linear', title: { display: true, text: `Total Pressure (${getPressureUnitLabel()})`, color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { bottom: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: { color: '#1F2937', font: { size: 12, weight: '600' } }, beginAtZero: true, min: 0 }
+      x: { type: 'linear', position: 'bottom', title: { display: true, text: `Flow Rate (${getFlowUnitLabel()})`, color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { top: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: {}, beginAtZero: true, min: 0 },
+      y: { type: 'linear', title: { display: true, text: `Total Pressure (${getPressureUnitLabel()})`, color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { bottom: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: {}, beginAtZero: true, min: 0 }
     },
     interaction: { intersect: false, mode: 'nearest' },
-    elements: { point: { zIndex: 2, radius: 2.5, hoverRadius: 5, hitRadius: 3 }, line: { tension: 0.2, cubicInterpolationMode: 'monotone', borderWidth: 3 } },
+    elements: { point: { zIndex: 2, radius: 2, hoverRadius: 4, hitRadius: 2 }, line: { tension: 0.2, cubicInterpolationMode: 'monotone' } },
     parsing: false,
     normalized: true
   };
@@ -724,16 +718,7 @@ const FlowSearch = () => {
     },
     scales: {
       ...chartOptions.scales,
-      y: {
-        ...chartOptions.scales.y,
-        title: { ...chartOptions.scales.y.title, text: 'Efficiency (%)' },
-        min: 0,
-        max: 100,
-        ticks: {
-          ...chartOptions.scales.y.ticks,
-          stepSize: 20
-        }
-      }
+      y: { ...chartOptions.scales.y, title: { ...chartOptions.scales.y.title, text: 'Efficiency (%)' }, min: 0, max: 100 }
     }
   };
 
@@ -888,13 +873,13 @@ const FlowSearch = () => {
             x: convertChartFlowValue(parseFloat(p.flowRate)), 
             y: parseFloat(p.brakePower) 
           })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
-        backgroundColor: 'rgba(148,148,22,0.3)',
+        backgroundColor: 'rgb(148, 148, 22 ,.3)',
         borderColor: 'rgb(148, 148, 22)',
         borderWidth: 2,
         pointRadius: 1.3,
         pointHoverRadius: 3,
-        pointBackgroundColor: 'rgb(148, 148, 22)',
-        pointBorderColor: 'rgba(148,148,22,0.7)',
+        pointBackgroundColor: 'rgb(99,102,241)',
+        pointBorderColor: 'rgba(150,150,20,0.7)',
         showLine: true,
         tension: 0.35,
       },
@@ -1169,54 +1154,6 @@ const FlowSearch = () => {
         return startY + headerHeight + (data.length * rowHeight) + 10;
       };
 
-    const drawDimensionsList = (entries, startY, options = {}) => {
-      if (!entries || entries.length === 0) return startY;
-
-      const columns = 2;
-      const rowHeight = options.rowHeight || 18;
-      const labelFontSize = options.labelFontSize || 8;
-      const valueFontSize = options.valueFontSize || 8;
-      const labelWidth = options.labelWidth || 80;
-      const colWidth = options.colWidth || 200;
-      const gap = options.gap || 24;
-      const tableWidth = columns * colWidth + (columns - 1) * gap;
-      const tableStartX = Math.max(40, (pageWidth - tableWidth) / 2);
-      const rowsPerColumn = Math.ceil(entries.length / columns);
-
-      let maxY = startY;
-
-      for (let colIdx = 0; colIdx < columns; colIdx++) {
-        const colEntries = entries.slice(colIdx * rowsPerColumn, (colIdx + 1) * rowsPerColumn);
-        if (colEntries.length === 0) continue;
-
-        const colX = tableStartX + colIdx * (colWidth + gap);
-
-        colEntries.forEach((entry, idx) => {
-          const rowTop = startY + idx * rowHeight;
-          const textY = rowTop + rowHeight - 6;
-
-          doc.setFillColor(248, 250, 255);
-          doc.rect(colX, rowTop, colWidth, rowHeight, 'F');
-          doc.setDrawColor(229, 237, 255);
-          doc.rect(colX, rowTop, colWidth, rowHeight);
-
-          doc.setFontSize(labelFontSize);
-          doc.setTextColor(71, 85, 105);
-          doc.setFont(undefined, 'bold');
-          doc.text(`${entry.label}:`, colX + 8, textY);
-
-          doc.setFontSize(valueFontSize);
-          doc.setTextColor(51, 65, 85);
-          doc.setFont(undefined, 'normal');
-          doc.text(String(entry.value ?? ''), colX + labelWidth, textY, { maxWidth: colWidth - labelWidth - 12 });
-
-          maxY = Math.max(maxY, rowTop + rowHeight);
-        });
-      }
-
-      return maxY + 20;
-    };
-
       // Header with logo and company details
       try {
         console.log('Loading logo for PDF:', logoImg);
@@ -1370,8 +1307,7 @@ const FlowSearch = () => {
         y = tableTop + rowsPerCol * rowHeight + 22;
       }
 
-      // Add dimensions section (temporarily hidden for axial)
-      if (fanCategory !== 'axial') {
+      // Add dimensions section
       try {
         // Determine which dimensions set to use (axial types or centrifugal NBR variants)
         const typeKeyForPdf = getCurrentDimensionsType();
@@ -1430,7 +1366,10 @@ const FlowSearch = () => {
               doc.text(variant.name, 40, y);
               y += 15;
               
-                const dataSectionTop = y;
+              const leftColumnX = 40;
+              const rightColumnX = pageWidth / 2 + 20;
+              const columnWidth = (pageWidth - 100) / 2;
+              const startY = y;
               
               // Left column: Dimensions data
               // Extract model number from selected model name (e.g., "NBR-D 310" -> "310")
@@ -1441,23 +1380,43 @@ const FlowSearch = () => {
               );
               
               if (selectedModelData) {
-                  const variantColumns = variant.columns || dims.columns || [];
-                  const entries = variantColumns
-                    .filter(col => col.key !== 'model')
-                    .map(col => ({ label: col.label, value: selectedModelData[col.key] }))
-                    .filter(entry => entry.value !== undefined && entry.value !== null && entry.value !== '');
-
-                  doc.setFontSize(11);
-                  doc.setTextColor('#1e3a8a');
-                  doc.text('Dimensions Data', pageWidth / 2, y, { align: 'center' });
-                  y += 14;
-
-                  y = drawDimensionsList(entries, y);
-                } else {
-                  doc.setFontSize(10);
-                  doc.setTextColor('#64748B');
-                  doc.text('Dimensions data not available for selected model', pageWidth / 2, y + 12, { align: 'center' });
-                  y += 32;
+                doc.setFontSize(10);
+                doc.setTextColor('#1e3a8a');
+                doc.text('Dimensions Data', leftColumnX, y);
+                y += 12;
+                
+                const rowHeight = 14;
+                const labelWidth = 60;
+                const variantColumns = variant.columns || dims.columns || [];
+                
+                variantColumns.forEach((col, idx) => {
+                  if (col.key === 'model') return; // Skip model column
+                  
+                  const rowY = y + (idx * rowHeight);
+                  
+                  // Draw background for each row
+                  doc.setFillColor(248, 250, 255);
+                  doc.rect(leftColumnX, rowY, columnWidth, rowHeight, 'F');
+                  
+                  // Draw border
+                  doc.setDrawColor(229, 237, 255);
+                  doc.setLineWidth(0.5);
+                  doc.rect(leftColumnX, rowY, columnWidth, rowHeight);
+                  
+                  // Label (bold)
+                  doc.setFontSize(8);
+                  doc.setTextColor(71, 85, 105);
+                  doc.setFont(undefined, 'bold');
+                  doc.text(`${col.label}:`, leftColumnX + 3, rowY + 9);
+                  
+                  // Value
+                  doc.setFontSize(8);
+                  doc.setTextColor(51, 65, 85);
+                  doc.setFont(undefined, 'normal');
+                  doc.text(String(selectedModelData[col.key] ?? ''), leftColumnX + labelWidth, rowY + 9);
+                });
+                
+                y += (variantColumns.length - 1) * rowHeight + 15;
               }
               
               // Variant image: render near full width
@@ -1499,7 +1458,7 @@ const FlowSearch = () => {
                   // Add text fallback
                   doc.setFontSize(10);
                   doc.setTextColor('#64748B');
-                    doc.text(`Image not available for ${variant.name}`, pageWidth / 2, dataSectionTop + 20, { align: 'center' });
+                  doc.text(`Image not available for ${variant.name}`, 40, startY + 20);
                 }
               }
               
@@ -1507,30 +1466,51 @@ const FlowSearch = () => {
             }
           } else {
             // Regular handling for other types
+            const leftColumnX = 40;
+            const rightColumnX = pageWidth / 2 + 20;
+            const columnWidth = (pageWidth - 100) / 2;
+            const startY = y;
+            
             // Left column: Dimensions data table
             if (dims.data && dims.data.length > 0) {
+              doc.setFontSize(11);
+              doc.setTextColor('#1e3a8a');
+              doc.text('Dimensions Data', leftColumnX, y);
+              y += 15;
+              
               const selectedModelData = dims.data.find(row => 
                 row.model.includes(selected?.model?.name || '')
               );
               
               if (selectedModelData) {
+                // Draw vertical list format
+                const rowHeight = 16;
+                const labelWidth = 80;
                 const baseColumns = dimensionsData.columns || [];
-                const entries = baseColumns
-                  .filter(col => col.key !== 'model')
-                  .map(col => ({ label: col.label, value: selectedModelData[col.key] }))
-                  .filter(entry => entry.value !== undefined && entry.value !== null && entry.value !== '');
-
-                doc.setFontSize(11);
-                doc.setTextColor('#1e3a8a');
-                doc.text('Dimensions Data', pageWidth / 2, y, { align: 'center' });
-                y += 15;
-
-                y = drawDimensionsList(entries, y);
-              } else {
-                doc.setFontSize(10);
-                doc.setTextColor('#64748B');
-                doc.text('Dimensions data not available for selected model', pageWidth / 2, y + 12, { align: 'center' });
-                y += 32;
+                baseColumns.forEach((col, idx) => {
+                  if (col.key === 'model') return;
+                  
+                  const rowY = y + (idx * rowHeight);
+                  
+                  doc.setFillColor(248, 250, 255);
+                  doc.rect(leftColumnX, rowY, columnWidth, rowHeight, 'F');
+                  
+                  doc.setDrawColor(229, 237, 255);
+                  doc.setLineWidth(0.5);
+                  doc.rect(leftColumnX, rowY, columnWidth, rowHeight);
+                  
+                  doc.setFontSize(9);
+                  doc.setTextColor(71, 85, 105);
+                  doc.setFont(undefined, 'bold');
+                  doc.text(`${col.label}:`, leftColumnX + 5, rowY + 11);
+                  
+                  doc.setFontSize(9);
+                  doc.setTextColor(51, 65, 85);
+                  doc.setFont(undefined, 'normal');
+                  doc.text(String(selectedModelData[col.key] ?? ''), leftColumnX + labelWidth, rowY + 11);
+                });
+                
+                y += (baseColumns.length - 1) * rowHeight + 20;
               }
             }
             
@@ -1571,7 +1551,7 @@ const FlowSearch = () => {
                 // Add text fallback
                 doc.setFontSize(10);
                 doc.setTextColor('#64748B');
-                doc.text('Dimensions image not available', pageWidth / 2, y + 30, { align: 'center' });
+                doc.text('Dimensions image not available', 40, startY + 40);
               }
             }
           }
@@ -1579,121 +1559,36 @@ const FlowSearch = () => {
       } catch (error) {
         console.log('Dimensions section not loaded:', error);
       }
-      }
 
       // Charts
-      const cloneDatasets = (datasets = []) =>
-        datasets.map((ds) => ({
-          ...ds,
-          data: Array.isArray(ds.data)
-            ? ds.data.map((point) =>
-                point && typeof point === 'object' ? { ...point } : point
-              )
-            : ds.data
-        }));
-
-      const cloneScales = (scales) => {
-        if (!scales) return undefined;
-        return Object.fromEntries(
-          Object.entries(scales).map(([key, scale]) => [
-            key,
-            scale
-              ? {
-                  ...scale,
-                  ticks: scale.ticks ? { ...scale.ticks } : undefined,
-                  title: scale.title ? { ...scale.title } : undefined,
-                  grid: scale.grid ? { ...scale.grid } : undefined
-                }
-              : scale
-          ])
-        );
-      };
-
-      const clonePlugins = (plugins) => {
-        if (!plugins) return undefined;
-        return {
-          ...plugins,
-          legend: plugins.legend
-            ? {
-                ...plugins.legend,
-                labels: plugins.legend.labels
-                  ? { ...plugins.legend.labels }
-                  : undefined
-              }
-            : undefined,
-          title: plugins.title ? { ...plugins.title } : undefined,
-          tooltip: plugins.tooltip ? { ...plugins.tooltip } : undefined
-        };
-      };
-
-      const createChartImage = async (data, options) => {
-        if (!data || !options) return null;
-        const canvas = document.createElement('canvas');
-        const width = 900;
-        const height = 500;
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        const clonedData = {
-          ...data,
-          datasets: cloneDatasets(data.datasets)
-        };
-        const adjustedOptions = {
-          ...options,
-          responsive: false,
-          maintainAspectRatio: false,
-          animation: false,
-          plugins: clonePlugins(options.plugins),
-          scales: cloneScales(options.scales)
-        };
-        const chartInstance = new ChartJS(ctx, {
-          type: 'scatter',
-          data: clonedData,
-          options: adjustedOptions
-        });
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        const imgData = canvas.toDataURL('image/png');
-        chartInstance.destroy();
-        return imgData;
-      };
-
-      const addChart = async (title, chartRef, fallbackData, fallbackOptions) => {
+      const addChart = (title, chartRef) => {
         try {
-          // Always render a fresh image from data/options to ensure consistent styling in PDF
-          let imgData = null;
-          if (fallbackData && fallbackOptions) {
-            imgData = await createChartImage(fallbackData, fallbackOptions);
+          const chart = chartRef?.current;
+          const imgData = chart?.toBase64Image?.();
+          if (imgData) {
+            if (y + 260 > doc.internal.pageSize.getHeight() - 40) {
+              doc.addPage();
+              y = 40;
+            }
+            doc.setFontSize(13);
+            doc.setTextColor('#1e3a8a');
+            doc.text(title, 40, y);
+            y += 12;
+            doc.addImage(imgData, 'PNG', 40, y, pageWidth - 80, 220);
+            y += 236;
           }
-          if (!imgData) return;
-          if (y + 260 > doc.internal.pageSize.getHeight() - 40) {
-            doc.addPage();
-            y = 40;
-          }
-          doc.setFontSize(13);
-          doc.setTextColor('#1e3a8a');
-          doc.text(title, 40, y);
-          y += 12;
-          doc.addImage(imgData, 'PNG', 40, y, pageWidth - 80, 220);
-          y += 236;
         } catch (error) {
           console.log(`Chart ${title} not loaded:`, error);
         }
       };
 
       if (pdfCharts.pressure) {
-        const isTotal = pdfPressureChartType === 'total';
-        const chartTitle = isTotal ? 'Total Pressure Chart' : 'Static Pressure Chart';
-        const chartRef = isTotal ? pressureChartRef : staticPressureChartRef;
-        const data = isTotal ? pressureChartData : staticPressureChartData;
-        const options = isTotal ? chartOptions : staticPressureChartOptions;
-        await addChart(chartTitle, chartRef, data, options);
+        const chartTitle = pdfPressureChartType === 'total' ? 'Total Pressure Chart' : 'Static Pressure Chart';
+        const chartRef = pdfPressureChartType === 'total' ? pressureChartRef : staticPressureChartRef;
+        addChart(chartTitle, chartRef);
       }
-      if (pdfCharts.power) {
-        await addChart('Power Chart', powerChartRef, powerChartData, powerChartOptions);
-      }
-      if (pdfCharts.efficiency) {
-        await addChart('Efficiency Chart', efficiencyChartRef, efficiencyChartData, efficiencyChartOptions);
-      }
+      if (pdfCharts.power) addChart('Power Chart', powerChartRef);
+      if (pdfCharts.efficiency) addChart('Efficiency Chart', efficiencyChartRef);
 
       doc.save(`technical-submittal-${selectedModel || 'selection'}.pdf`);
       setShowPdfModal(false);
@@ -2080,18 +1975,16 @@ const FlowSearch = () => {
                   >
                     Configuration
                   </button>
-                  {fanCategory !== 'axial' && (
-                    <button
-                      onClick={() => setActiveTab('dimensions')}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                        activeTab === 'dimensions'
-                          ? 'border-[#1E3A8A] text-[#1E3A8A]'
-                          : 'border-transparent text-[#64748B] hover:text-[#1E3A8A]'
-                      }`}
-                    >
-                      Dimensions
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setActiveTab('dimensions')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === 'dimensions'
+                        ? 'border-[#1E3A8A] text-[#1E3A8A]'
+                        : 'border-transparent text-[#64748B] hover:text-[#1E3A8A]'
+                    }`}
+                  >
+                    Dimensions
+                  </button>
                 </div>
 
                 {/* Tab Content */}
@@ -2237,7 +2130,7 @@ const FlowSearch = () => {
                   </div>
                 )}
 
-                {fanCategory !== 'axial' && activeTab === 'dimensions' && (
+                {activeTab === 'dimensions' && (
                   <div className="space-y-6">
                     {(() => {
                       const dimensionsData = getCurrentDimensionsData();
