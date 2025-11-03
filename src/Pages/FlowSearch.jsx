@@ -378,11 +378,7 @@ const FlowSearch = () => {
     }
   }, [isFanSectionType, driveType]);
 
-  useEffect(() => {
-    if (fanCategory === 'axial' && activeTab === 'dimensions') {
-      setActiveTab('configuration');
-    }
-  }, [fanCategory, activeTab]);
+  // Allow dimensions tab for axial without auto-redirect
 
   // Mapping helpers
   const mapDriveToCode = (drive) => {
@@ -410,6 +406,8 @@ const FlowSearch = () => {
         let results = res?.data?.data?.results || [];
         let trackId = res?.data?.data?.trackId;
         setTrackId(trackId);
+        // Ensure UI returns to Search (configuration) after loading finishes
+        setActiveTab('configuration');
         // If series is NBR-D/NBR_D or NBS-D/NBS_D, transform returned results per requested rules
         if (
           fanCategory === 'centrifugal' &&
@@ -483,6 +481,9 @@ const FlowSearch = () => {
       const msg = err?.response?.data?.message || 'Search request failed';
       setApiResults([]);
       setNotification({ type: 'error', message: msg });
+    },
+    onSettled: () => {
+      setActiveTab('configuration');
     }
   });
 
@@ -1267,10 +1268,9 @@ const FlowSearch = () => {
         ] : []),
         `Drive Type: ${driveType || '-'}`,
         `Model: ${selectedModel || '-'}`,
-        `RPM: ${selectedRpm || '-'}`,
       ];
       const infoStartY = y;
-      info.forEach((t) => { doc.text(t, 40, y); y += 16; });
+      info.forEach((t) => { doc.text(t, 40, y); y += 30; });
 
       // Add selected product type image (axial or centrifugal)
       try {
@@ -1334,12 +1334,14 @@ const FlowSearch = () => {
         doc.setFontSize(12);
         doc.setTextColor('#334155');
         const wpRows = [
-          ['Flow Rate', `${Number(closestPoint.flowRate).toFixed(6)} m3/s`],
-          ['Total Pressure', `${Number(closestPoint.totalPressure).toFixed(6)} Pa`],
-          ['Static Pressure', `${Number(closestPoint.staticPressure).toFixed?.(6) ?? Number(closestPoint.staticPressure).toFixed(6)} Pa`],
+          ['RPM', `${selected?.rpm?.rpm} `],
+          ['Flow Rate', `${Number(closestPoint.flowRate).toFixed(6)} ${getFlowUnitLabel()}`],
+          ['Total Pressure', `${Number(closestPoint.totalPressure).toFixed(6)} ${getPressureUnitLabel()}`],
+          ['Static Pressure', `${Number(closestPoint.staticPressure).toFixed?.(6) ?? Number(closestPoint.staticPressure).toFixed(6)} ${getPressureUnitLabel()}`],
           ['Efficiency', `${Number(closestPoint.efficiency).toFixed(2)} %`],
           ['Brake Power', `${Number(closestPoint.brakePower).toFixed(6)} kw`],
           ['Installed', `${(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw`],
+          ['LPA', `${(Number(closestPoint.lpa)).toFixed(6)} kw`],
         ];
         const marginX = 40;
         const gap = 24;
@@ -1370,19 +1372,20 @@ const FlowSearch = () => {
         y = tableTop + rowsPerCol * rowHeight + 22;
       }
 
-      // Add dimensions section (temporarily hidden for axial)
-      if (fanCategory !== 'axial') {
+      // Add dimensions section
       try {
         // Determine which dimensions set to use (axial types or centrifugal NBR variants)
         const typeKeyForPdf = getCurrentDimensionsType();
         let dims = null;
-        if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
+        if (fanCategory === 'axial') {
+          dims = dimensionsData[typeKeyForPdf] || getDimensionsData(typeKeyForPdf, selected?.model?.name);
+        } else if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
           // Use full object with variants for NBR, NBR-D, and NBS-D
           dims = dimensionsData[typeKeyForPdf] || null;
         } else if (typeKeyForPdf) {
           dims = getDimensionsData(typeKeyForPdf, selected?.model?.name);
         }
-        if (dims) {
+        if (false && dims) {
           // Check if we need a new page
           if (y + 300 > pageHeight - 40) {
             doc.addPage();
@@ -1579,7 +1582,6 @@ const FlowSearch = () => {
       } catch (error) {
         console.log('Dimensions section not loaded:', error);
       }
-      }
 
       // Charts
       const cloneDatasets = (datasets = []) =>
@@ -1694,7 +1696,140 @@ const FlowSearch = () => {
       if (pdfCharts.efficiency) {
         await addChart('Efficiency Chart', efficiencyChartRef, efficiencyChartData, efficiencyChartOptions);
       }
+      // Now render Dimensions after charts
+      try {
+        const typeKeyForPdf = getCurrentDimensionsType();
+        let dims = null;
+        if (fanCategory === 'axial') {
+          dims = dimensionsData[typeKeyForPdf] || getDimensionsData(typeKeyForPdf, selected?.model?.name);
+        } else if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
+          dims = dimensionsData[typeKeyForPdf] || null;
+        } else if (typeKeyForPdf) {
+          dims = getDimensionsData(typeKeyForPdf, selected?.model?.name);
+        }
+        if (dims) {
+          if (y + 300 > pageHeight - 40) {
+            doc.addPage();
+            y = 40;
+          }
+          doc.setFontSize(13);
+          doc.setTextColor('#1e3a8a');
+          doc.text('Dimensions', 40, y);
+          y += 20;
 
+          if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR') || (typeKeyForPdf === 'NBR_D') || (typeKeyForPdf === 'NBS_D')) && dims.variants) {
+            const filteredVariants = dims.variants.filter(variant => {
+              if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') return variant.name.includes('Fan Section Type');
+              if (series === 'NBR-D' || series === 'NBS-D') return variant.name.includes('Dimensions');
+              if (axialType === 'NEID') {
+                const modelName = selected?.model?.name || '';
+                return variant.data.some(row => row.model === modelName || row.model.includes(modelName) || modelName.includes(row.model));
+              }
+              return true;
+            });
+
+            for (const variant of filteredVariants) {
+              if (y + 250 > pageHeight - 40) { doc.addPage(); y = 40; }
+              doc.setFontSize(12);
+              doc.setTextColor('#1e3a8a');
+              doc.text(variant.name, 40, y);
+              y += 15;
+
+              const dataSectionTop = y;
+
+              if (variant.image) {
+                try {
+                  const resolvedVariantUrl = resolveAnyImage(variant.image) || variant.image;
+                  const variantImageBase64 = await loadImageAsBase64(resolvedVariantUrl);
+                  const img = new Image(); img.src = variantImageBase64;
+                  await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; setTimeout(reject, 5000); });
+                  const naturalW = img.naturalWidth || 400; const naturalH = img.naturalHeight || 300;
+                  const maxWidth = pageWidth - 80; const maxHeight = 420;
+                  const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
+                  const imgW = Math.max(1, Math.round(naturalW * scale));
+                  const imgH = Math.max(1, Math.round(naturalH * scale));
+                  if (y + imgH + 40 > pageHeight - 40) { doc.addPage(); y = 40; }
+                  const imageX = 40 + Math.max(0, Math.floor((maxWidth - imgW) / 2));
+                  const imageY = y + 10;
+                  doc.addImage(variantImageBase64, 'PNG', imageX, imageY, imgW, imgH);
+                  y = imageY + imgH + 20;
+                } catch (error) {
+                  doc.setFontSize(10); doc.setTextColor('#64748B');
+                  doc.text(`Image not available for ${variant.name}`, pageWidth / 2, dataSectionTop + 20, { align: 'center' });
+                }
+              }
+
+              const modelName = selected?.model?.name || '';
+              const modelNumber = modelName.replace(/^[A-Z-]+\s*/, '').trim();
+              const selectedModelData = variant.data.find(row => row.model === modelNumber || row.model.includes(modelNumber) || modelName.includes(row.model));
+              if (selectedModelData) {
+                const variantColumns = variant.columns || dims.columns || [];
+                const entries = variantColumns.filter(col => col.key !== 'model').map(col => ({ label: col.label, value: selectedModelData[col.key] })).filter(e => e.value !== undefined && e.value !== null && e.value !== '');
+                doc.setFontSize(11); doc.setTextColor('#1e3a8a');
+                doc.text('Dimensions Data', pageWidth / 2, y, { align: 'center' }); y += 14;
+                y = drawDimensionsList(entries, y);
+              } else {
+                doc.setFontSize(10); doc.setTextColor('#64748B');
+                doc.text('Dimensions data not available for selected model', pageWidth / 2, y + 12, { align: 'center' }); y += 32;
+              }
+
+              y += 20;
+            }
+          } else {
+            // Regular types: image first, then data
+            if (dims.image) {
+              try {
+                const resolvedUrl = resolveAnyImage(dims.image) || dims.image;
+                const dimensionsImageBase64 = await loadImageAsBase64(resolvedUrl);
+                const img = new Image(); img.src = dimensionsImageBase64;
+                await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; setTimeout(reject, 5000); });
+                const naturalW = img.naturalWidth || 400; const naturalH = img.naturalHeight || 300;
+                const maxWidth = pageWidth - 80; const maxHeight = 420;
+                const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
+                const imgW = Math.max(1, Math.round(naturalW * scale));
+                const imgH = Math.max(1, Math.round(naturalH * scale));
+                if (y + imgH + 40 > pageHeight - 40) { doc.addPage(); y = 40; }
+                const imageX = 40 + Math.max(0, Math.floor((maxWidth - imgW) / 2));
+                const imageY = y + 10;
+                doc.addImage(dimensionsImageBase64, 'PNG', imageX, imageY, imgW, imgH);
+                y = imageY + imgH + 20;
+              } catch (error) {
+                doc.setFontSize(10); doc.setTextColor('#64748B');
+                doc.text('Dimensions image not available', pageWidth / 2, y + 30, { align: 'center' });
+              }
+            }
+
+            if (dims.data && dims.data.length > 0) {
+              const fullModelName = selected?.model?.name || '';
+              const modelNumber = fullModelName.replace(/^[A-Z-]+\s*/i, '').trim();
+              const selectedModelData = dims.data.find(row => {
+                const rowModel = String(row.model || '').trim();
+                return (
+                  rowModel === fullModelName ||
+                  rowModel === modelNumber ||
+                  rowModel.includes(fullModelName) ||
+                  rowModel.includes(modelNumber) ||
+                  fullModelName.includes(rowModel) ||
+                  modelNumber.includes(rowModel)
+                );
+              });
+
+              if (selectedModelData) {
+                const baseColumns = dims.columns || [];
+                const entries = baseColumns.filter(col => col.key !== 'model').map(col => ({ label: col.label, value: selectedModelData[col.key] })).filter(e => e.value !== undefined && e.value !== null && e.value !== '');
+                doc.setFontSize(11); doc.setTextColor('#1e3a8a');
+                doc.text('Dimensions Data', pageWidth / 2, y, { align: 'center' }); y += 15;
+                y = drawDimensionsList(entries, y);
+              } else {
+                doc.setFontSize(10); doc.setTextColor('#64748B');
+                doc.text('Dimensions data not available for selected model', pageWidth / 2, y + 12, { align: 'center' }); y += 32;
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.log('Dimensions (post-charts) not loaded:', error);
+      }
       doc.save(`technical-submittal-${selectedModel || 'selection'}.pdf`);
       setShowPdfModal(false);
     } catch (error) {
@@ -2016,7 +2151,7 @@ const FlowSearch = () => {
                 {searchMutation.isPending ? (
                   <span className="inline-flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    Searching...
+                    Loading...
                   </span>
                 ) : 'Search'}
               </button>
@@ -2080,18 +2215,16 @@ const FlowSearch = () => {
                   >
                     Configuration
                   </button>
-                  {fanCategory !== 'axial' && (
-                    <button
-                      onClick={() => setActiveTab('dimensions')}
-                      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                        activeTab === 'dimensions'
-                          ? 'border-[#1E3A8A] text-[#1E3A8A]'
-                          : 'border-transparent text-[#64748B] hover:text-[#1E3A8A]'
-                      }`}
-                    >
-                      Dimensions
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setActiveTab('dimensions')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === 'dimensions'
+                        ? 'border-[#1E3A8A] text-[#1E3A8A]'
+                        : 'border-transparent text-[#64748B] hover:text-[#1E3A8A]'
+                    }`}
+                  >
+                    Dimensions
+                  </button>
                 </div>
 
                 {/* Tab Content */}
@@ -2237,7 +2370,7 @@ const FlowSearch = () => {
                   </div>
                 )}
 
-                {fanCategory !== 'axial' && activeTab === 'dimensions' && (
+                {activeTab === 'dimensions' && (
                   <div className="space-y-6">
                     {(() => {
                       const dimensionsData = getCurrentDimensionsData();
