@@ -45,6 +45,22 @@ const AllModels = () => {
     staleTime: 5 * 60 * 1000,
   })
 
+  // Sort models by numeric value extracted from name (e.g., 315, 400, 450) ascending
+  const getNumericFromName = (name) => {
+    const s = String(name || '')
+    const match = s.match(/(\d+(?:\.\d+)?)/)
+    return match ? Number(match[1]) : Number.POSITIVE_INFINITY
+  }
+  const sortedModels = [...models].sort((a, b) => {
+    const an = getNumericFromName(a?.name)
+    const bn = getNumericFromName(b?.name)
+    if (an === bn) {
+      // fallback to lexical to stabilize order when equal or non-numeric
+      return String(a?.name || '').localeCompare(String(b?.name || ''))
+    }
+    return an - bn
+  })
+
   const deleteMutation = useMutation({
     mutationFn: (id) => api.delete(`/model/${id}`),
     onSuccess: () => {
@@ -263,7 +279,7 @@ const AllModels = () => {
     setPage(1)
   }
 
-  const filtered = models.filter(m => {
+  const filtered = sortedModels.filter(m => {
     const t = (m.type || '').toLowerCase()
     if (t === 'axial') return filters.axial
     if (t === 'centrifugal') {

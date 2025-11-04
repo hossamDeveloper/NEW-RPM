@@ -1398,8 +1398,8 @@ const FlowSearch = () => {
           doc.text('Dimensions', 40, y);
           y += 20;
           
-          // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D)
-          if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR') || (typeKeyForPdf === 'NBR_D') || (typeKeyForPdf === 'NBS_D')) && dims.variants) {
+          // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D, NPD)
+          if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR') || (typeKeyForPdf === 'NBR_D') || (typeKeyForPdf === 'NBS_D') || (typeKeyForPdf === 'NPD')) && dims.variants) {
             // Filter variants based on selected series
             const filteredVariants = dims.variants.filter(variant => {
               if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') {
@@ -1846,6 +1846,7 @@ const FlowSearch = () => {
       if (['NBR', 'NBS', 'NBRS'].includes(String(series))) return 'NBR';
       if (series === 'NBR-D' || series === 'NBR_D' || series === 'NBR-D FAN SECTION TYPE') return 'NBR_D';
       if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D FAN SECTION TYPE') return 'NBS_D';
+      if (String(series) === 'NPD') return 'NPD';
     }
     return null;
   };
@@ -1854,7 +1855,7 @@ const FlowSearch = () => {
     const typeKey = getCurrentDimensionsType();
     if (!typeKey || !selected?.model?.name) return null;
     // For types with multiple variants (e.g., NEID, NBR, NBR-D, NBS-D), return the full type with variants
-    if (typeKey === 'NBR' || typeKey === 'NBR_D' || typeKey === 'NBS_D' || axialType === 'NEID') {
+    if (typeKey === 'NBR' || typeKey === 'NBR_D' || typeKey === 'NBS_D' || typeKey === 'NPD' || axialType === 'NEID') {
       return dimensionsData[typeKey] || null;
     }
     return getDimensionsData(typeKey, selected.model.name);
@@ -2383,9 +2384,9 @@ const FlowSearch = () => {
                         );
                       }
 
-                      // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D)
+                      // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D, NPD)
                       const currentType = getCurrentDimensionsType();
-                      if (((axialType === 'NEID') || (currentType === 'NBR') || (currentType === 'NBR_D') || (currentType === 'NBS_D')) && dimensionsData.variants) {
+                      if (((axialType === 'NEID') || (currentType === 'NBR') || (currentType === 'NBR_D') || (currentType === 'NBS_D') || (currentType === 'NPD')) && dimensionsData.variants) {
                         // Filter variants based on selected series
                         const filteredVariants = dimensionsData.variants.filter(variant => {
                           if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') {
@@ -2443,12 +2444,19 @@ const FlowSearch = () => {
                                             Dimensions Data - {selectedModelData.model}
                                           </h4>
                                           <div className="space-y-2">
-                                            {(variant.columns || dimensionsData.columns || []).map((col, colIdx) => (
-                                              <div key={colIdx} className="flex justify-between py-1 border-b border-[#E5EDFF] last:border-b-0">
-                                                <span className="font-medium text-[#475569]">{col.label}:</span>
-                                                <span className="text-[#334155]">{selectedModelData[col.key]}</span>
-                                              </div>
-                                            ))}
+                                            {(() => {
+                                              const allCols = (variant.columns || dimensionsData.columns || []);
+                                              const filtered = allCols.filter(col => {
+                                                const val = selectedModelData?.[col.key];
+                                                return val !== undefined && val !== null && String(val).trim() !== '' && String(val).trim() !== '*';
+                                              });
+                                              return filtered.map((col, colIdx) => (
+                                                <div key={colIdx} className="flex justify-between py-1 border-b border-[#E5EDFF] last:border-b-0">
+                                                  <span className="font-medium text-[#475569]">{col.label}:</span>
+                                                  <span className="text-[#334155]">{selectedModelData[col.key]}</span>
+                                                </div>
+                                              ));
+                                            })()}
                                           </div>
                                         </div>
                                       ) : (
@@ -2466,9 +2474,9 @@ const FlowSearch = () => {
                       }
 
                       // Regular handling for other types
-                      const selectedModelData = dimensionsData.data.find(row => 
-                        row.model.includes(selected?.model?.name || '')
-                      );
+                      const selectedModelData = Array.isArray(dimensionsData.data)
+                        ? dimensionsData.data.find(row => (row?.model || '').includes(selected?.model?.name || ''))
+                        : null;
 
                       return (
                         <div className="space-y-6">
@@ -2496,20 +2504,36 @@ const FlowSearch = () => {
                               </h3>
                               <div className="overflow-x-auto">
                                 <table className="min-w-full bg-white rounded-xl border border-[#E5EDFF]">
-                                  <thead className="bg-[#F8FAFF]">
-                                    <tr className="text-left text-[#475569] border-b border-[#E5EDFF]">
-                                      {dimensionsData.columns.map((col, idx) => (
-                                        <th key={idx} className="py-3 px-4 font-semibold">{col.label}</th>
-                                      ))}
-                                    </tr>
-                                  </thead>
+                                  {(() => {
+                                    const allCols = (dimensionsData.columns || []);
+                                    const filteredCols = allCols.filter(col => {
+                                      const val = selectedModelData?.[col.key];
+                                      return val !== undefined && val !== null && String(val).trim() !== '' && String(val).trim() !== '*';
+                                    });
+                                    return (
+                                      <thead className="bg-[#F8FAFF]">
+                                        <tr className="text-left text-[#475569] border-b border-[#E5EDFF]">
+                                          {filteredCols.map((col, idx) => (
+                                            <th key={idx} className="py-3 px-4 font-semibold">{col.label}</th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                    );
+                                  })()}
                                   <tbody className="divide-y divide-[#E5EDFF] text-[#334155]">
                                     <tr className="bg-blue-50">
-                                      {dimensionsData.columns.map((col, colIdx) => (
-                                        <td key={colIdx} className="py-3 px-4 font-medium">
-                                          {selectedModelData[col.key]}
-                                        </td>
-                                      ))}
+                                      {(() => {
+                                        const allCols = (dimensionsData.columns || []);
+                                        const filteredCols = allCols.filter(col => {
+                                          const val = selectedModelData?.[col.key];
+                                          return val !== undefined && val !== null && String(val).trim() !== '' && String(val).trim() !== '*';
+                                        });
+                                        return filteredCols.map((col, colIdx) => (
+                                          <td key={colIdx} className="py-3 px-4 font-medium">
+                                            {selectedModelData[col.key]}
+                                          </td>
+                                        ));
+                                      })()}
                                     </tr>
                                   </tbody>
                                 </table>
