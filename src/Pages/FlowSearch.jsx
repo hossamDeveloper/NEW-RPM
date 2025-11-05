@@ -45,6 +45,11 @@ const FlowSearch = () => {
   const [driveType, setDriveType] = useState('');
   const [error, setError] = useState('');
   const [notification, setNotification] = useState(null); // {type,message}
+  useEffect(() => {
+    if (!notification) return;
+    const timer = setTimeout(() => setNotification(null), 3000);
+    return () => clearTimeout(timer);
+  }, [notification]);
   const [apiResults, setApiResults] = useState([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [trackId, setTrackId] = useState('');
@@ -56,6 +61,7 @@ const FlowSearch = () => {
   const [activeTab, setActiveTab] = useState('configuration'); // 'configuration' | 'dimensions'
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfError, setPdfError] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
   
   // New state for dynamically loaded points
   const [modelPoints, setModelPoints] = useState({}); // { rpmId: points[] }
@@ -285,6 +291,7 @@ const FlowSearch = () => {
     if (name === 'staticPressure' && axialType === 'NEI2D') {
       return; // locked for NEI2D
     }
+    setHasSearched(false);
     setSearchData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -347,10 +354,12 @@ const FlowSearch = () => {
     const converted = convertPressureFromPa(si, newUnit);
     setSearchData(prev => ({ ...prev, staticPressure: String(converted) }));
     setPressureUnit(newUnit);
+    
   };
 
   const isJetFan = axialType === 'NEI2D';
   const onSelectAxial = (code) => {
+    setHasSearched(false);
     setAxialType(code);
     if (code === 'NEI2D') {
       setSearchData(prev => ({ ...prev, staticPressure: '10' }));
@@ -576,6 +585,7 @@ const FlowSearch = () => {
     setError('');
     setNotification(null);
     setApiResults([]);
+    setHasSearched(true);
 
     if (!isFormComplete) {
       setError('Please complete all required fields.');
@@ -670,73 +680,260 @@ const FlowSearch = () => {
     return convertFlowFromM3S(value, flowUnit);
   };
 
-  const chartOptions = {
+  // Extract a base model number token (e.g., "500" from "500 M624" or "500 H627")
+  const getBaseModelNumber = (modelName) => {
+    const s = String(modelName || '');
+    // Prefer number before a letter token (e.g., 500 M..., 450 H...)
+    let m = s.match(/\b(\d{2,5})\b\s*[A-Z]/i);
+    if (m && m[1]) return m[1];
+    // Fallback: first standalone number token
+    m = s.match(/\b(\d{2,5})\b/);
+    if (m && m[1]) return m[1];
+    // Fallback: any digits
+    m = s.match(/(\d+)/);
+    return m ? m[1] : '';
+  };
+
+  // Robust outlier filtering for curve points using rolling median + MAD
+  const getMedian = (numbers) => {
+    if (!numbers || numbers.length === 0) return 0;
+    const arr = [...numbers].sort((a, b) => a - b);
+    const mid = Math.floor(arr.length / 2);
+    return arr.length % 2 === 0 ? (arr[mid - 1] + arr[mid]) / 2 : arr[mid];
+  };
+
+  const getMAD = (numbers, median) => {
+    if (!numbers || numbers.length === 0) return 0;
+    const deviations = numbers.map(n => Math.abs(n - median));
+    return getMedian(deviations);
+  };
+
+  const filterCurveOutliers = (points) => {
+    if (!Array.isArray(points) || points.length < 5) return points;
+    const sorted = [...points].sort((a, b) => (a?.x ?? 0) - (b?.x ?? 0));
+    const windowSize = 11; // odd number for symmetric window
+    const half = Math.floor(windowSize / 2);
+    const kept = [];
+
+    for (let i = 0; i < sorted.length; i++) {
+      const start = Math.max(0, i - half);
+      const end = Math.min(sorted.length - 1, i + half);
+      const windowYs = [];
+      for (let j = start; j <= end; j++) {
+        const y = sorted[j]?.y;
+        if (Number.isFinite(y)) windowYs.push(y);
+      }
+      if (windowYs.length === 0) continue;
+      const median = getMedian(windowYs);
+      const mad = getMAD(windowYs, median);
+      const point = sorted[i];
+      const absDev = Math.abs(point.y - median);
+      // Tolerance: 3 * MAD (scaled) + 2% of median as soft cushion
+      const tol = (mad ? 3 * 1.4826 * mad : 0) + Math.abs(0.02 * (median || 0));
+      if (absDev <= tol) kept.push(point);
+    }
+
+    // Preserve original order
+    const keepSet = new Set(kept.map(p => `${p.x}|${p.y}`));
+    return points.filter(p => keepSet.has(`${p.x}|${p.y}`));
+  };
+
+  // Helper function to create annotation configuration for working point
+  const getWorkingPointAnnotations = (xValue, yValue, xLabel, yLabel) => {
+    if (xValue === null || xValue === undefined || yValue === null || yValue === undefined || isNaN(xValue) || isNaN(yValue)) {
+      return {};
+    }
+
+    return {
+      annotation: {
+        annotations: {
+          // Vertical line (parallel to y-axis) from working point to x-axis
+          verticalLine: {
+            type: 'line',
+            xMin: xValue,
+            xMax: xValue,
+            yMin: 0,
+            yMax: yValue,
+            borderColor: 'rgb(234,88,12)',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            label: {
+              display: true,
+              content: xLabel,
+              position: 'end',
+              backgroundColor: 'rgba(234,88,12,0.8)',
+              color: 'white',
+              font: {
+                size: 12,
+                weight: 'bold'
+              },
+              padding: 6,
+              yAdjust: 25,
+              xAdjust: 0
+            }
+          },
+          // Horizontal line (parallel to x-axis) from working point to y-axis
+          horizontalLine: {
+            type: 'line',
+            xMin: 0,
+            xMax: xValue,
+            yMin: yValue,
+            yMax: yValue,
+            borderColor: 'rgb(234,88,12)',
+            borderWidth: 2,
+            borderDash: [5, 5],
+            label: {
+              display: true,
+              content: yLabel,
+              position: 'center',
+              backgroundColor: 'rgba(234,88,12,0.8)',
+              color: 'white',
+              font: {
+                size: 12,
+                weight: 'bold'
+              },
+              padding: 6,
+              xAdjust: -25,
+              yAdjust: 0
+            }
+          }
+        }
+      }
+    };
+  };
+
+  const baseChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
+    devicePixelRatio: 2,
     plugins: {
-      legend: { position: 'top', labels: { color: '#1F2937', font: { size: 14, weight: '600' }, padding: 20 } },
-      title: { display: true, text: `Flow Rate vs Total Pressure (${getFlowUnitLabel()} / ${getPressureUnitLabel()})`, color: '#1F2937', font: { size: 16, weight: 'bold' }, padding: { top: 10, bottom: 20 } },
-      tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', padding: 12, titleColor: 'white', bodyColor: 'white', titleFont: { size: 14, weight: 'bold' }, bodyFont: { size: 13 },
+      legend: { position: 'top', labels: { color: '#1F2937', font: { size: 15, weight: '600' }, padding: 24 } },
+      title: { display: true, text: `Flow Rate vs Total Pressure (${getFlowUnitLabel()} / ${getPressureUnitLabel()})`, color: '#1F2937', font: { size: 18, weight: 'bold' }, padding: { top: 12, bottom: 22 } },
+      tooltip: { backgroundColor: 'rgba(15, 23, 42, 0.9)', padding: 12, titleColor: 'white', bodyColor: 'white', titleFont: { size: 15, weight: 'bold' }, bodyFont: { size: 14 },
         callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)} ${getPressureUnitLabel()}`]; } } }
     },
     scales: {
-      x: { type: 'linear', position: 'bottom', title: { display: true, text: `Flow Rate (${getFlowUnitLabel()})`, color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { top: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: { color: '#1F2937', font: { size: 12, weight: '600' } }, beginAtZero: true, min: 0 },
-      y: { type: 'linear', title: { display: true, text: `Total Pressure (${getPressureUnitLabel()})`, color: '#1F2937', font: { size: 14, weight: 'bold' }, padding: { bottom: 10 } }, grid: { color: 'rgba(0,0,0,0.8)' }, ticks: { color: '#1F2937', font: { size: 12, weight: '600' } }, beginAtZero: true, min: 0 }
+      x: { type: 'linear', position: 'bottom', title: { display: true, text: `Flow Rate (${getFlowUnitLabel()})`, color: '#1F2937', font: { size: 15, weight: 'bold' }, padding: { top: 12 } }, grid: { color: 'rgba(0,0,0,0.8)', lineWidth: 1 }, border: { width: 2 }, ticks: { color: '#1F2937', font: { size: 14, weight: '600' }, padding: 8 }, beginAtZero: true, min: 0 },
+      y: { type: 'linear', title: { display: true, text: `Total Pressure (${getPressureUnitLabel()})`, color: '#1F2937', font: { size: 15, weight: 'bold' }, padding: { bottom: 12 } }, grid: { color: 'rgba(0,0,0,0.8)', lineWidth: 1 }, border: { width: 2 }, ticks: { color: '#1F2937', font: { size: 14, weight: '600' }, padding: 8 }, beginAtZero: true, min: 0 }
     },
     interaction: { intersect: false, mode: 'nearest' },
-    elements: { point: { zIndex: 2, radius: 2.5, hoverRadius: 5, hitRadius: 3 }, line: { tension: 0.2, cubicInterpolationMode: 'monotone', borderWidth: 3 } },
+    elements: { point: { zIndex: 2, radius: 3.2, hoverRadius: 6, hitRadius: 3 }, line: { tension: 0.2, cubicInterpolationMode: 'monotone', borderWidth: 3.5 } },
     parsing: false,
     normalized: true
   };
 
-  const staticPressureChartOptions = {
-    ...chartOptions,
-    plugins: {
-      ...chartOptions.plugins,
-      title: { ...chartOptions.plugins.title, text: `Flow Rate vs Static Pressure (${getFlowUnitLabel()} / ${getPressureUnitLabel()})` },
-      tooltip: { ...chartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)} ${getPressureUnitLabel()}`]; } } }
-    },
-    scales: {
-      ...chartOptions.scales,
-      y: { ...chartOptions.scales.y, title: { ...chartOptions.scales.y.title, text: `Static Pressure (${getPressureUnitLabel()})` } }
-    }
+  // Get chart options with annotations for working point
+  const getChartOptions = () => {
+    const wpX = closestPoint ? convertChartFlowValue(parseFloat(closestPoint.flowRate)) : null;
+    const wpY = closestPoint ? convertChartPressureValue(parseFloat(closestPoint.totalPressure)) : null;
+    const annotations = getWorkingPointAnnotations(
+      wpX,
+      wpY,
+      wpX ? `${wpX.toFixed(4)} ${getFlowUnitLabel()}` : '',
+      wpY ? `${wpY.toFixed(4)} ${getPressureUnitLabel()}` : ''
+    );
+    
+    return {
+      ...baseChartOptions,
+      plugins: {
+        ...baseChartOptions.plugins,
+        ...annotations
+      }
+    };
   };
 
-  const powerChartOptions = {
-    ...chartOptions,
-    plugins: {
-      ...chartOptions.plugins,
-      title: { ...chartOptions.plugins.title, text: `Flow Rate vs Brake Power (${getFlowUnitLabel()})` },
-      tooltip: { ...chartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)}`]; } } }
-    },
-    scales: {
-      ...chartOptions.scales,
-      y: { ...chartOptions.scales.y, title: { ...chartOptions.scales.y.title, text: 'Brake Power (kW)' } }
-    }
+  const chartOptions = getChartOptions();
+
+  const getStaticPressureChartOptions = () => {
+    const wpX = closestPoint ? convertChartFlowValue(parseFloat(closestPoint.flowRate)) : null;
+    const wpY = closestPoint && Number(closestPoint.staticPressure) >= 0 ? convertChartPressureValue(Number(closestPoint.staticPressure)) : null;
+    const annotations = getWorkingPointAnnotations(
+      wpX,
+      wpY,
+      wpX ? `${wpX.toFixed(4)} ${getFlowUnitLabel()}` : '',
+      wpY ? `${wpY.toFixed(4)} ${getPressureUnitLabel()}` : ''
+    );
+    
+    return {
+      ...baseChartOptions,
+      plugins: {
+        ...baseChartOptions.plugins,
+        title: { ...baseChartOptions.plugins.title, text: `Flow Rate vs Static Pressure (${getFlowUnitLabel()} / ${getPressureUnitLabel()})` },
+        tooltip: { ...baseChartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)} ${getPressureUnitLabel()}`]; } } },
+        ...annotations
+      },
+      scales: {
+        ...baseChartOptions.scales,
+        y: { ...baseChartOptions.scales.y, title: { ...baseChartOptions.scales.y.title, text: `Static Pressure (${getPressureUnitLabel()})` } }
+      }
+    };
   };
 
-  const efficiencyChartOptions = {
-    ...chartOptions,
-    plugins: {
-      ...chartOptions.plugins,
-      title: { ...chartOptions.plugins.title, text: `Flow Rate vs Efficiency (${getFlowUnitLabel()} / %)` },
-      tooltip: { ...chartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(2)}%`]; } } }
-    },
-    scales: {
-      ...chartOptions.scales,
-      y: {
-        ...chartOptions.scales.y,
-        title: { ...chartOptions.scales.y.title, text: 'Efficiency (%)' },
-        min: 0,
-        max: 100,
-        ticks: {
-          ...chartOptions.scales.y.ticks,
-          stepSize: 20
+  const staticPressureChartOptions = getStaticPressureChartOptions();
+
+  const getPowerChartOptions = () => {
+    const wpX = closestPoint ? convertChartFlowValue(parseFloat(closestPoint.flowRate)) : null;
+    const wpY = closestPoint ? parseFloat(closestPoint.brakePower) : null;
+    const annotations = getWorkingPointAnnotations(
+      wpX,
+      wpY,
+      wpX ? `${wpX.toFixed(4)} ${getFlowUnitLabel()}` : '',
+      wpY ? `${wpY.toFixed(4)} kW` : ''
+    );
+    
+    return {
+      ...baseChartOptions,
+      plugins: {
+        ...baseChartOptions.plugins,
+        title: { ...baseChartOptions.plugins.title, text: `Flow Rate vs Brake Power (${getFlowUnitLabel()})` },
+        tooltip: { ...baseChartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)}`]; } } },
+        ...annotations
+      },
+      scales: {
+        ...baseChartOptions.scales,
+        y: { ...baseChartOptions.scales.y, title: { ...baseChartOptions.scales.y.title, text: 'Brake Power (kW)' } }
+      }
+    };
+  };
+
+  const powerChartOptions = getPowerChartOptions();
+
+  const getEfficiencyChartOptions = () => {
+    const wpX = closestPoint ? convertChartFlowValue(parseFloat(closestPoint.flowRate)) : null;
+    const wpY = closestPoint ? parseFloat(closestPoint.efficiency) : null;
+    const annotations = getWorkingPointAnnotations(
+      wpX,
+      wpY,
+      wpX ? `${wpX.toFixed(4)} ${getFlowUnitLabel()}` : '',
+      wpY ? `${wpY.toFixed(2)}%` : ''
+    );
+    
+    return {
+      ...baseChartOptions,
+      plugins: {
+        ...baseChartOptions.plugins,
+        title: { ...baseChartOptions.plugins.title, text: `Flow Rate vs Efficiency (${getFlowUnitLabel()} / %)` },
+        tooltip: { ...baseChartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(2)}%`]; } } },
+        ...annotations
+      },
+      scales: {
+        ...baseChartOptions.scales,
+        y: {
+          ...baseChartOptions.scales.y,
+          title: { ...baseChartOptions.scales.y.title, text: 'Efficiency (%)' },
+          min: 0,
+          max: 100,
+          ticks: {
+            ...baseChartOptions.scales.y.ticks,
+            stepSize: 20
+          }
         }
       }
-    }
+    };
   };
+
+  const efficiencyChartOptions = getEfficiencyChartOptions();
 
   // Build datasets for full curve + closest point overlay
   const pressureChartData = (() => {
@@ -769,10 +966,12 @@ const FlowSearch = () => {
     datasets: [
       {
         label: 'Total Pressure Curve',
-          data: filtered.map(p => ({ 
-          x: convertChartFlowValue(parseFloat(p.flowRate)), 
-          y: convertChartPressureValue(parseFloat(p.totalPressure)) 
-          })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
+          data: filterCurveOutliers(
+            filtered.map(p => ({ 
+              x: convertChartFlowValue(parseFloat(p.flowRate)), 
+              y: convertChartPressureValue(parseFloat(p.totalPressure)) 
+            })).filter(point => !isNaN(point.x) && !isNaN(point.y))
+          ),
         backgroundColor: 'rgba(59,130,246,0.3)',
         borderColor: 'rgb(59,130,246)',
         borderWidth: 2,
@@ -829,10 +1028,12 @@ const FlowSearch = () => {
     datasets: [
       {
         label: 'Static Pressure Curve',
-          data: filtered.map(p => ({
-          x: convertChartFlowValue(parseFloat(p.flowRate)),
-          y: convertChartPressureValue(Number(p.staticPressure))
-          })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
+          data: filterCurveOutliers(
+            filtered.map(p => ({
+              x: convertChartFlowValue(parseFloat(p.flowRate)),
+              y: convertChartPressureValue(Number(p.staticPressure))
+            })).filter(point => !isNaN(point.x) && !isNaN(point.y))
+          ),
           backgroundColor: 'rgba(59,130,246,0.3)',
           borderColor: 'rgb(59,130,246)',
         borderWidth: 2,
@@ -885,10 +1086,12 @@ const FlowSearch = () => {
     datasets: [
       {
         label: 'Brake Power Curve',
-          data: curvePoints.map(p => ({ 
-            x: convertChartFlowValue(parseFloat(p.flowRate)), 
-            y: parseFloat(p.brakePower) 
-          })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
+          data: filterCurveOutliers(
+            curvePoints.map(p => ({ 
+              x: convertChartFlowValue(parseFloat(p.flowRate)), 
+              y: parseFloat(p.brakePower) 
+            })).filter(point => !isNaN(point.x) && !isNaN(point.y))
+          ),
         backgroundColor: 'rgba(148,148,22,0.3)',
         borderColor: 'rgb(148, 148, 22)',
         borderWidth: 2,
@@ -941,10 +1144,12 @@ const FlowSearch = () => {
     datasets: [
       {
         label: 'Efficiency Curve',
-          data: curvePoints.map(p => ({ 
-            x: convertChartFlowValue(parseFloat(p.flowRate)), 
-            y: parseFloat(p.efficiency) 
-          })).filter(point => !isNaN(point.x) && !isNaN(point.y)),
+          data: filterCurveOutliers(
+            curvePoints.map(p => ({ 
+              x: convertChartFlowValue(parseFloat(p.flowRate)), 
+              y: parseFloat(p.efficiency) 
+            })).filter(point => !isNaN(point.x) && !isNaN(point.y))
+          ),
         backgroundColor: 'rgba(16,185,129,0.25)',
         borderColor: 'rgb(5,150,105)',
         borderWidth: 2,
@@ -1341,7 +1546,7 @@ const FlowSearch = () => {
           ['Efficiency', `${Number(closestPoint.efficiency).toFixed(2)} %`],
           ['Brake Power', `${Number(closestPoint.brakePower).toFixed(6)} kw`],
           ['Installed', `${(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw`],
-          ['LPA', `${(Number(closestPoint.lpa)).toFixed(6)} kw`],
+          ['LPA', `${(Number(closestPoint.lpa)).toFixed(6)} db`],
         ];
         const marginX = 40;
         const gap = 24;
@@ -1648,6 +1853,79 @@ const FlowSearch = () => {
           plugins: clonePlugins(options.plugins),
           scales: cloneScales(options.scales)
         };
+        // Enhance readability for PDF: larger fonts and thicker axes
+        try {
+          if (adjustedOptions.plugins) {
+            if (adjustedOptions.plugins.title) {
+              adjustedOptions.plugins.title = {
+                ...adjustedOptions.plugins.title,
+                font: { ...(adjustedOptions.plugins.title.font || {}), size: 22, weight: 'bold' },
+                padding: { top: 12, bottom: 22 }
+              };
+            }
+            if (adjustedOptions.plugins.legend) {
+              adjustedOptions.plugins.legend = {
+                ...adjustedOptions.plugins.legend,
+                labels: {
+                  ...(adjustedOptions.plugins.legend.labels || {}),
+                  font: { ...((adjustedOptions.plugins.legend.labels || {}).font || {}), size: 18, weight: '600' },
+                  padding: 28
+                }
+              };
+            }
+            if (adjustedOptions.plugins.tooltip) {
+              adjustedOptions.plugins.tooltip = {
+                ...adjustedOptions.plugins.tooltip,
+                titleFont: { ...((adjustedOptions.plugins.tooltip || {}).titleFont || {}), size: 17, weight: 'bold' },
+                bodyFont: { ...((adjustedOptions.plugins.tooltip || {}).bodyFont || {}), size: 16 }
+              };
+            }
+            // Make annotation labels bigger if present
+            if (adjustedOptions.plugins.annotation && adjustedOptions.plugins.annotation.annotations) {
+              const anns = adjustedOptions.plugins.annotation.annotations;
+              Object.keys(anns).forEach((k) => {
+                const ann = anns[k];
+                if (ann && ann.label) {
+                  ann.label = {
+                    ...ann.label,
+                    font: { ...(ann.label.font || {}), size: 14, weight: 'bold' },
+                    padding: Math.max(6, ann.label.padding || 0)
+                  };
+                }
+              });
+            }
+          }
+          if (adjustedOptions.scales) {
+            const sx = adjustedOptions.scales.x || adjustedOptions.scales['x'];
+            const sy = adjustedOptions.scales.y || adjustedOptions.scales['y'];
+            if (sx) {
+              adjustedOptions.scales.x = {
+                ...sx,
+                title: sx.title ? { ...sx.title, font: { ...(sx.title.font || {}), size: 18, weight: 'bold' } } : sx.title,
+                ticks: { ...(sx.ticks || {}), font: { ...((sx.ticks || {}).font || {}), size: 18, weight: '600' }, padding: 12 },
+                grid: { ...(sx.grid || {}), lineWidth: 1 },
+                border: { ...(sx.border || {}), width: 2 }
+              };
+            }
+            if (sy) {
+              adjustedOptions.scales.y = {
+                ...sy,
+                title: sy.title ? { ...sy.title, font: { ...(sy.title.font || {}), size: 18, weight: 'bold' } } : sy.title,
+                ticks: { ...(sy.ticks || {}), font: { ...((sy.ticks || {}).font || {}), size: 18, weight: '600' }, padding: 12 },
+                grid: { ...(sy.grid || {}), lineWidth: 1 },
+                border: { ...(sy.border || {}), width: 2 }
+              };
+            }
+          }
+          // Make lines and points thicker/larger for PDF clarity
+          adjustedOptions.elements = {
+            ...(adjustedOptions.elements || {}),
+            point: { ...((adjustedOptions.elements || {}).point || {}), radius: 4.5, hoverRadius: 7 },
+            line: { ...((adjustedOptions.elements || {}).line || {}), borderWidth: 4 }
+          };
+        } catch (e) {
+          // ignore enhancements errors; fallback to provided options
+        }
         const chartInstance = new ChartJS(ctx, {
           type: 'scatter',
           data: clonedData,
@@ -1667,16 +1945,17 @@ const FlowSearch = () => {
             imgData = await createChartImage(fallbackData, fallbackOptions);
           }
           if (!imgData) return;
-          if (y + 260 > doc.internal.pageSize.getHeight() - 40) {
+          const targetHeight = 280;
+          if (y + (targetHeight + 40) > doc.internal.pageSize.getHeight() - 40) {
             doc.addPage();
             y = 40;
           }
           doc.setFontSize(13);
           doc.setTextColor('#1e3a8a');
           doc.text(title, 40, y);
-          y += 12;
-          doc.addImage(imgData, 'PNG', 40, y, pageWidth - 80, 220);
-          y += 236;
+          y += 14;
+          doc.addImage(imgData, 'PNG', 40, y, pageWidth - 80, targetHeight);
+          y += targetHeight + 20;
         } catch (error) {
           console.log(`Chart ${title} not loaded:`, error);
         }
@@ -1700,12 +1979,19 @@ const FlowSearch = () => {
       try {
         const typeKeyForPdf = getCurrentDimensionsType();
         let dims = null;
+        const fullModelNameForPdf = selected?.model?.name || '';
+        const preMMatchPdf = fullModelNameForPdf.match(/(\d+)\s*M\d+/i);
+        const preMNumberPdf = preMMatchPdf ? preMMatchPdf[1] : (fullModelNameForPdf.match(/(\d+)/)?.[1] || '');
         if (fanCategory === 'axial') {
-          dims = dimensionsData[typeKeyForPdf] || getDimensionsData(typeKeyForPdf, selected?.model?.name);
+          // Try multiple fallbacks to ensure we load NEID dimensions structure
+          dims = dimensionsData[typeKeyForPdf]
+            || getDimensionsData(typeKeyForPdf, fullModelNameForPdf)
+            || (preMNumberPdf ? getDimensionsData(typeKeyForPdf, preMNumberPdf) : null)
+            || getDimensionsData(typeKeyForPdf);
         } else if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
           dims = dimensionsData[typeKeyForPdf] || null;
         } else if (typeKeyForPdf) {
-          dims = getDimensionsData(typeKeyForPdf, selected?.model?.name);
+          dims = getDimensionsData(typeKeyForPdf, fullModelNameForPdf) || (preMNumberPdf ? getDimensionsData(typeKeyForPdf, preMNumberPdf) : null);
         }
         if (dims) {
           if (y + 300 > pageHeight - 40) {
@@ -1722,8 +2008,8 @@ const FlowSearch = () => {
               if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') return variant.name.includes('Fan Section Type');
               if (series === 'NBR-D' || series === 'NBS-D') return variant.name.includes('Dimensions');
               if (axialType === 'NEID') {
-                const modelName = selected?.model?.name || '';
-                return variant.data.some(row => row.model === modelName || row.model.includes(modelName) || modelName.includes(row.model));
+                // Do not filter NEID variants by model name; include all and pick row per variant later
+                return true;
               }
               return true;
             });
@@ -1760,8 +2046,18 @@ const FlowSearch = () => {
               }
 
               const modelName = selected?.model?.name || '';
-              const modelNumber = modelName.replace(/^[A-Z-]+\s*/, '').trim();
-              const selectedModelData = variant.data.find(row => row.model === modelNumber || row.model.includes(modelNumber) || modelName.includes(row.model));
+              const key = getBaseModelNumber(modelName) || modelName.replace(/^[A-Z-]+\s*/, '').trim();
+              let selectedModelData = variant.data.find(row => {
+                const rowModel = String(row.model || '');
+                return rowModel === key || rowModel.includes(key) || modelName.includes(rowModel);
+              });
+              if (!selectedModelData) {
+                // Broaden matching: compare only digits (e.g., 400)
+                const digits = (key.match(/\d+/)?.[0]) || '';
+                if (digits) {
+                  selectedModelData = variant.data.find(row => String(row.model || '').includes(digits));
+                }
+              }
               if (selectedModelData) {
                 const variantColumns = variant.columns || dims.columns || [];
                 const entries = variantColumns.filter(col => col.key !== 'model').map(col => ({ label: col.label, value: selectedModelData[col.key] })).filter(e => e.value !== undefined && e.value !== null && e.value !== '');
@@ -1801,12 +2097,15 @@ const FlowSearch = () => {
 
             if (dims.data && dims.data.length > 0) {
               const fullModelName = selected?.model?.name || '';
+              const preMMatch = fullModelName.match(/(\d+)\s*M\d+/i);
+              const preMNumber = preMMatch ? preMMatch[1] : null;
               const modelNumber = fullModelName.replace(/^[A-Z-]+\s*/i, '').trim();
               const selectedModelData = dims.data.find(row => {
                 const rowModel = String(row.model || '').trim();
                 return (
                   rowModel === fullModelName ||
                   rowModel === modelNumber ||
+                  (preMNumber ? (rowModel === preMNumber || rowModel.includes(preMNumber)) : false) ||
                   rowModel.includes(fullModelName) ||
                   rowModel.includes(modelNumber) ||
                   fullModelName.includes(rowModel) ||
@@ -1956,8 +2255,10 @@ const FlowSearch = () => {
           <span className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-[#FDBA74]"></span>
 
           {notification && (
-            <div className={`mb-4 p-3 rounded ${notification.type==='success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
-              {notification.message}
+            <div className="fixed top-4 right-4 z-50 w-80">
+              <div className={`p-3 rounded shadow ${notification.type==='success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+                {notification.message}
+              </div>
             </div>
           )}
 
@@ -1965,7 +2266,7 @@ const FlowSearch = () => {
             <div>
               <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Category</label>
               <div className="grid grid-cols-2 gap-3">
-                <button type="button" onClick={() => { setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setFanCategory('axial'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} className={`border rounded-lg p-3 hover:shadow transition ${fanCategory==='axial' ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
+                <button type="button" onClick={() => { setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setFanCategory('axial'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} className={`border rounded-lg p-3 hover:shadow transition ${fanCategory==='axial' ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
                   <img 
                     src={AxialCategoryImg} 
                     alt="Axial" 
@@ -1975,7 +2276,7 @@ const FlowSearch = () => {
                   />
                   <div className="mt-2 text-center text-[#1F3B73] text-sm font-medium">Axial</div>
                 </button>
-                <button type="button" onClick={() => { setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setFanCategory('centrifugal'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} className={`border rounded-lg p-3 hover:shadow transition ${fanCategory==='centrifugal' ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
+                <button type="button" onClick={() => { setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setFanCategory('centrifugal'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} className={`border rounded-lg p-3 hover:shadow transition ${fanCategory==='centrifugal' ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
                   <img 
                     src={CentrifugalCategoryImg} 
                     alt="Centrifugal" 
@@ -1990,18 +2291,18 @@ const FlowSearch = () => {
                 <div className="mt-4 space-y-3">
                   <div>
                     <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Select Pressure</label>
-                    <select value={pressureClass} onChange={(e)=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setPressureClass(e.target.value); setLowConfig(''); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
+                    <select value={pressureClass} onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setPressureClass(e.target.value); setLowConfig(''); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                       <option value="">Select pressure</option>
                       <option value="low">Low Pressure</option>
-                      <option value="medium">Medium Pressure</option>
-                      <option value="high">High Pressure</option>
+                      {/* <option value="medium">Medium Pressure</option>
+                      <option value="high">High Pressure</option> */}
                     </select>
                   </div>
                   {pressureClass === 'low' && (
                     <>
                       <div>
                         <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Select Configuration</label>
-                        <select value={lowConfig} onChange={(e)=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setLowConfig(e.target.value); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
+                        <select value={lowConfig} onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setLowConfig(e.target.value); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                           <option value="">Select configuration</option>
                           <option value="sisw">SISW</option>
                           <option value="didw">DIDW</option>
@@ -2053,7 +2354,7 @@ const FlowSearch = () => {
             {fanCategory === 'axial' && axialType && axialType !== 'NEI2D' && (
               <div>
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Drive Type</label>
-                <select value={driveType} onChange={(e)=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setDriveType(e.target.value); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
+                <select value={driveType} onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setDriveType(e.target.value); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                   <option value="">Select drive type</option>
                   {driveOptions.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
@@ -2068,7 +2369,7 @@ const FlowSearch = () => {
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {currentSeriesCards.map(card => (
-                      <button key={card.code} type="button" onClick={()=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setSeries(card.code); }} className={`border rounded-lg p-2 hover:shadow transition ${series===card.code ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'} ${(!pressureClass || (pressureClass==='low' && !lowConfig)) ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <button key={card.code} type="button" onClick={()=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setSeries(card.code); }} className={`border rounded-lg p-2 hover:shadow transition ${series===card.code ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'} ${(!pressureClass || (pressureClass==='low' && !lowConfig)) ? 'opacity-50 pointer-events-none' : ''}`}>
                         {card.img ? (
                           <img 
                             src={card.img} 
@@ -2107,7 +2408,7 @@ const FlowSearch = () => {
            {fanCategory === 'centrifugal' && series && (
               <div>
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Drive Type</label>
-                <select value={driveType} onChange={(e)=>{ setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setDriveType(e.target.value); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
+                <select value={driveType} onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setDriveType(e.target.value); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                   <option value="">Select drive type</option>
                   {driveOptions.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
@@ -2118,12 +2419,12 @@ const FlowSearch = () => {
           </div>
 
           {axialType !== 'NEI2D' && (
-          <form onSubmit={handleSubmit} className="space-y-6 ">
+          <form onSubmit={handleSubmit} onFocusCapture={()=>setHasSearched(false)} onChangeCapture={()=>setHasSearched(false)} className="space-y-6 ">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Flow Rate</label>
                 <div className="flex gap-2">
-                  <input type="number" step="any" name="flowRate" value={searchData.flowRate} onChange={(e)=>{ searchMutation.reset(); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); } }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter flow rate" />
+                  <input type="number" step="any" name="flowRate" value={searchData.flowRate} onChange={(e)=>{ searchMutation.reset(); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter flow rate" />
                   <select value={flowUnit} onChange={handleFlowUnitChange} className="px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                     <option value="m3/s">m3/s</option>
                     <option value="m3/hr">m3/hr</option>
@@ -2136,7 +2437,7 @@ const FlowSearch = () => {
               <div>
                 <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Static Pressure</label>
                 <div className="flex gap-2">
-                  <input type="number" step="any" name="staticPressure" value={isJetFan ? '10' : searchData.staticPressure} onChange={(e)=>{ searchMutation.reset(); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); } }} disabled={isJetFan} readOnly={isJetFan} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter static pressure" />
+                  <input type="number" step="any" name="staticPressure" value={isJetFan ? '10' : searchData.staticPressure} onChange={(e)=>{ searchMutation.reset(); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} disabled={isJetFan} readOnly={isJetFan} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter static pressure" />
                   <select value={pressureUnit} onChange={handlePressureUnitChange} disabled={isJetFan} className="px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                     <option value="Pa">Pa</option>
                     <option value="InWc">InWc</option>
@@ -2299,7 +2600,7 @@ const FlowSearch = () => {
                                   <button type="button" onClick={()=>setPressureChartView('static')} className={`px-3 py-1 text-sm ${pressureChartView==='static' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Static</button>
                                 </div>
                               </div>
-                              <div className="h-80">
+                              <div className="h-96">
                                 {pressureChartData.datasets.length > 0 ? (
                                   <>
                                 {pressureChartView === 'total' ? (
@@ -2336,7 +2637,7 @@ const FlowSearch = () => {
                                   <button type="button" onClick={()=>setChartView('efficiency')} className={`px-3 py-1 text-sm ${chartView==='efficiency' ? 'bg-white text-[#1E3A8A]' : 'text-[#475569]'}`}>Efficiency</button>
                                 </div>
                               </div>
-                              <div className="h-80">
+                              <div className="h-96">
                                 {(() => {
                                   const currentData = chartView === 'power' ? powerChartData : efficiencyChartData;
                                   const currentOptions = chartView === 'power' ? powerChartOptions : efficiencyChartOptions;
@@ -2398,11 +2699,14 @@ const FlowSearch = () => {
                           if (axialType === 'NEID') {
                             // For NEID, show only the variant that contains the selected model
                             const modelName = selected?.model?.name || '';
-                            return variant.data.some(row => 
-                              row.model === modelName || 
-                              row.model.includes(modelName) || 
-                              modelName.includes(row.model)
-                            );
+                            const preMNumber = getBaseModelNumber(modelName);
+                            return variant.data.some(row => {
+                              const rowModel = String(row.model || '');
+                              return rowModel === modelName ||
+                                     rowModel.includes(modelName) ||
+                                     modelName.includes(rowModel) ||
+                                     (preMNumber && (rowModel === preMNumber || rowModel.includes(preMNumber)));
+                            });
                           }
                           return true; // Show all variants for other types
                         });
@@ -2410,12 +2714,13 @@ const FlowSearch = () => {
                         return (
                           <div className="space-y-6">
                             {filteredVariants.map((variant, variantIndex) => {
-                              // Extract model number from selected model name (e.g., "NBR-D 310" -> "310")
+                              // Use base number token so models like "500 M624" and "500 H627" map to same data
                               const modelName = selected?.model?.name || '';
-                              const modelNumber = modelName.replace(/^[A-Z-]+\s*/, '').trim();
-                              const selectedModelData = variant.data.find(row => 
-                                row.model === modelNumber || row.model.includes(modelNumber) || modelName.includes(row.model)
-                              );
+                              const key = getBaseModelNumber(modelName) || modelName.replace(/^[A-Z-]+\s*/, '').trim();
+                              const selectedModelData = variant.data.find(row => {
+                                const rowModel = String(row.model || '');
+                                return rowModel === key || rowModel.includes(key) || modelName.includes(rowModel);
+                              });
                               
                               return (
                                 <div key={variantIndex} className="space-y-4">
@@ -2441,7 +2746,7 @@ const FlowSearch = () => {
                                       {selectedModelData ? (
                                         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#E5EDFF]">
                                           <h4 className="text-lg font-semibold text-[#1E3A8A] mb-3">
-                                            Dimensions Data - {selectedModelData.model}
+                                            Dimensions Data - {selected?.model?.name || selectedModelData.model}
                                           </h4>
                                           <div className="space-y-2">
                                             {(() => {
@@ -2453,7 +2758,7 @@ const FlowSearch = () => {
                                               return filtered.map((col, colIdx) => (
                                                 <div key={colIdx} className="flex justify-between py-1 border-b border-[#E5EDFF] last:border-b-0">
                                                   <span className="font-medium text-[#475569]">{col.label}:</span>
-                                                  <span className="text-[#334155]">{selectedModelData[col.key]}</span>
+                                                  <span className="text-[#334155]">{col.key === 'model' ? (selected?.model?.name || selectedModelData[col.key]) : selectedModelData[col.key]}</span>
                                                 </div>
                                               ));
                                             })()}
@@ -2475,7 +2780,14 @@ const FlowSearch = () => {
 
                       // Regular handling for other types
                       const selectedModelData = Array.isArray(dimensionsData.data)
-                        ? dimensionsData.data.find(row => (row?.model || '').includes(selected?.model?.name || ''))
+                        ? (() => {
+                            const modelName = selected?.model?.name || '';
+                            const key = getBaseModelNumber(modelName) || modelName;
+                            return dimensionsData.data.find(row => {
+                              const rowModel = String(row?.model || '');
+                              return rowModel === key || rowModel.includes(key) || key.includes(rowModel);
+                            });
+                          })()
                         : null;
 
                       return (
@@ -2500,7 +2812,7 @@ const FlowSearch = () => {
                           {selectedModelData ? (
                             <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
                               <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">
-                                Dimensions Data - {selectedModelData.model}
+                                Dimensions Data - {selected?.model?.name || selectedModelData.model}
                               </h3>
                               <div className="overflow-x-auto">
                                 <table className="min-w-full bg-white rounded-xl border border-[#E5EDFF]">
@@ -2530,7 +2842,7 @@ const FlowSearch = () => {
                                         });
                                         return filteredCols.map((col, colIdx) => (
                                           <td key={colIdx} className="py-3 px-4 font-medium">
-                                            {selectedModelData[col.key]}
+                                            {col.key === 'model' ? (selected?.model?.name || selectedModelData[col.key]) : selectedModelData[col.key]}
                                           </td>
                                         ));
                                       })()}
@@ -2580,6 +2892,12 @@ const FlowSearch = () => {
               </div>
             )}
           </motion.div>
+        )}
+        {hasSearched && !searchMutation.isPending && apiResults.length === 0 && (
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF] text-center">
+            <div className="text-[#64748B] text-lg mb-2">لا توجد نتائج</div>
+            <div className="text-[#9CA3AF] text-sm">لا توجد نتائج مطابقة لمدخلات البحث الحالية</div>
+          </div>
         )}
         {axialType === 'NEI2D' ? (
           <div className="flex justify-center">
