@@ -1540,9 +1540,9 @@ const FlowSearch = () => {
         doc.setTextColor('#334155');
         const wpRows = [
           ['RPM', `${selected?.rpm?.rpm} `],
-          ['Flow Rate', `${Number(closestPoint.flowRate).toFixed(6)} ${getFlowUnitLabel()}`],
-          ['Total Pressure', `${Number(closestPoint.totalPressure).toFixed(6)} ${getPressureUnitLabel()}`],
-          ['Static Pressure', `${Number(closestPoint.staticPressure).toFixed?.(6) ?? Number(closestPoint.staticPressure).toFixed(6)} ${getPressureUnitLabel()}`],
+          ['Flow Rate', `${Number(convertChartFlowValue(parseFloat(closestPoint.flowRate))).toFixed(6)} ${getFlowUnitLabel()}`],
+          ['Total Pressure', `${Number(convertChartPressureValue(parseFloat(closestPoint.staticPressure + closestPoint.dynamicPressure))).toFixed(6)} ${getPressureUnitLabel()}`],
+          ['Static Pressure', `${Number(convertChartPressureValue(Number(closestPoint.staticPressure))).toFixed(6)} ${getPressureUnitLabel()}`],
           ['Efficiency', `${Number(closestPoint.efficiency).toFixed(2)} %`],
           ['Brake Power', `${Number(closestPoint.brakePower).toFixed(6)} kw`],
           ['Installed', `${(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw`],
