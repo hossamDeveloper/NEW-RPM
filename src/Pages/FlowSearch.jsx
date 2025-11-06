@@ -694,6 +694,42 @@ const FlowSearch = () => {
     return m ? m[1] : '';
   };
 
+  // Robust matcher to find the dimensions row for a given model name across naming variations
+  const findDimensionsRowMatch = (rows, modelName) => {
+    if (!Array.isArray(rows) || !modelName) return null;
+    const full = String(modelName || '');
+    const modelNumber = full.replace(/^[A-Z-]+\s*/i, '').trim();
+    const base = getBaseModelNumber(full);
+    const digitsOnly = (full.match(/\d+/)?.[0]) || '';
+    const preMMatch = full.match(/(\d+)\s*M\d+/i);
+    const preMNumber = preMMatch ? preMMatch[1] : null;
+
+    const normalize = (s) => String(s || '')
+      .toLowerCase()
+      .replace(/\s+/g, '')
+      .replace(/[_-]/g, '');
+
+    const normFull = normalize(full);
+    const normModelNumber = normalize(modelNumber);
+
+    // Priority order of strategies
+    const strategies = [
+      (row) => normalize(row.model) === normFull,
+      (row) => normalize(row.model) === normModelNumber,
+      (row) => normalize(row.model).includes(normFull) || normFull.includes(normalize(row.model)),
+      (row) => normalize(row.model).includes(normModelNumber) || normModelNumber.includes(normalize(row.model)),
+      (row) => base && String(row.model || '').includes(base),
+      (row) => preMNumber && String(row.model || '').includes(preMNumber),
+      (row) => digitsOnly && String(row.model || '').includes(digitsOnly),
+    ];
+
+    for (const test of strategies) {
+      const hit = rows.find((row) => test(row));
+      if (hit) return hit;
+    }
+    return null;
+  };
+
   // Robust outlier filtering for curve points using rolling median + MAD
   const getMedian = (numbers) => {
     if (!numbers || numbers.length === 0) return 0;
@@ -1590,200 +1626,200 @@ const FlowSearch = () => {
         } else if (typeKeyForPdf) {
           dims = getDimensionsData(typeKeyForPdf, selected?.model?.name);
         }
-        if (false && dims) {
-          // Check if we need a new page
-          if (y + 300 > pageHeight - 40) {
-            doc.addPage();
-            y = 40;
-          }
+        // if (false && dims) {
+        //   // Check if we need a new page
+        //   if (y + 300 > pageHeight - 40) {
+        //     doc.addPage();
+        //     y = 40;
+        //   }
           
-          // Dimensions title
-          doc.setFontSize(13);
-          doc.setTextColor('#1e3a8a');
-          doc.text('Dimensions', 40, y);
-          y += 20;
+        //   // Dimensions title
+        //   doc.setFontSize(13);
+        //   doc.setTextColor('#1e3a8a');
+        //   doc.text('Dimensions', 40, y);
+        //   y += 20;
           
-          // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D, NPD)
-          if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR') || (typeKeyForPdf === 'NBR_D') || (typeKeyForPdf === 'NBS_D') || (typeKeyForPdf === 'NPD')) && dims.variants) {
-            // Filter variants based on selected series
-            const filteredVariants = dims.variants.filter(variant => {
-              if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') {
-                return variant.name.includes('Fan Section Type');
-              }
-              if (series === 'NBR-D' || series === 'NBS-D') {
-                return variant.name.includes('Dimensions'); // Show only Dimensions variant for NBR-D/NBS-D
-              }
-              if (axialType === 'NEID') {
-                // For NEID, show only the variant that contains the selected model
-                const modelName = selected?.model?.name || '';
-                return variant.data.some(row => 
-                  row.model === modelName || 
-                  row.model.includes(modelName) || 
-                  modelName.includes(row.model)
-                );
-              }
-              return true; // Show all variants for other types
-            });
+        //   // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D, NPD)
+        //   if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR') || (typeKeyForPdf === 'NBR_D') || (typeKeyForPdf === 'NBS_D') || (typeKeyForPdf === 'NPD')) && dims.variants) {
+        //     // Filter variants based on selected series
+        //     const filteredVariants = dims.variants.filter(variant => {
+        //       if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') {
+        //         return variant.name.includes('Fan Section Type');
+        //       }
+        //       if (series === 'NBR-D' || series === 'NBS-D') {
+        //         return variant.name.includes('Dimensions'); // Show only Dimensions variant for NBR-D/NBS-D
+        //       }
+        //       if (axialType === 'NEID') {
+        //         // For NEID, show only the variant that contains the selected model
+        //         const modelName = selected?.model?.name || '';
+        //         return variant.data.some(row => 
+        //           row.model === modelName || 
+        //           row.model.includes(modelName) || 
+        //           modelName.includes(row.model)
+        //         );
+        //       }
+        //       return true; // Show all variants for other types
+        //     });
             
-            for (const [variantIndex, variant] of filteredVariants.entries()) {
-              // Check if we need a new page for each variant
-              if (y + 250 > pageHeight - 40) {
-                doc.addPage();
-                y = 40;
-              }
+        //     for (const [variantIndex, variant] of filteredVariants.entries()) {
+        //       // Check if we need a new page for each variant
+        //       if (y + 250 > pageHeight - 40) {
+        //         doc.addPage();
+        //         y = 40;
+        //       }
               
-              // Variant title
-              doc.setFontSize(12);
-              doc.setTextColor('#1e3a8a');
-              doc.text(variant.name, 40, y);
-              y += 15;
+        //       // Variant title
+        //       doc.setFontSize(12);
+        //       doc.setTextColor('#1e3a8a');
+        //       doc.text(variant.name, 40, y);
+        //       y += 15;
               
-                const dataSectionTop = y;
+        //         const dataSectionTop = y;
               
-              // Left column: Dimensions data
-              // Extract model number from selected model name (e.g., "NBR-D 310" -> "310")
-              const modelName = selected?.model?.name || '';
-              const modelNumber = modelName.replace(/^[A-Z-]+\s*/, '').trim();
-              const selectedModelData = variant.data.find(row => 
-                row.model === modelNumber || row.model.includes(modelNumber) || modelName.includes(row.model)
-              );
+        //       // Left column: Dimensions data
+        //       // Extract model number from selected model name (e.g., "NBR-D 310" -> "310")
+        //       const modelName = selected?.model?.name || '';
+        //       const modelNumber = modelName.replace(/^[A-Z-]+\s*/, '').trim();
+        //       const selectedModelData = variant.data.find(row => 
+        //         row.model === modelNumber || row.model.includes(modelNumber) || modelName.includes(row.model)
+        //       );
               
-              if (selectedModelData) {
-                  const variantColumns = variant.columns || dims.columns || [];
-                  const entries = variantColumns
-                    .filter(col => col.key !== 'model')
-                    .map(col => ({ label: col.label, value: selectedModelData[col.key] }))
-                    .filter(entry => entry.value !== undefined && entry.value !== null && entry.value !== '');
+        //       if (selectedModelData) {
+        //           const variantColumns = variant.columns || dims.columns || [];
+        //           const entries = variantColumns
+        //             .filter(col => col.key !== 'model')
+        //             .map(col => ({ label: col.label, value: selectedModelData[col.key] }))
+        //             .filter(entry => entry.value !== undefined && entry.value !== null && entry.value !== '');
 
-                  doc.setFontSize(11);
-                  doc.setTextColor('#1e3a8a');
-                  doc.text('Dimensions Data', pageWidth / 2, y, { align: 'center' });
-                  y += 14;
+        //           doc.setFontSize(11);
+        //           doc.setTextColor('#1e3a8a');
+        //           doc.text('Dimensions Data', pageWidth / 2, y, { align: 'center' });
+        //           y += 14;
 
-                  y = drawDimensionsList(entries, y);
-                } else {
-                  doc.setFontSize(10);
-                  doc.setTextColor('#64748B');
-                  doc.text('Dimensions data not available for selected model', pageWidth / 2, y + 12, { align: 'center' });
-                  y += 32;
-              }
+        //           y = drawDimensionsList(entries, y);
+        //         } else {
+        //           doc.setFontSize(10);
+        //           doc.setTextColor('#64748B');
+        //           doc.text('Dimensions data not available for selected model', pageWidth / 2, y + 12, { align: 'center' });
+        //           y += 32;
+        //       }
               
-              // Variant image: render near full width
-              if (variant.image) {
-                try {
-                  console.log('Loading variant image for PDF:', variant.image);
-                  const resolvedVariantUrl = resolveAnyImage(variant.image) || variant.image;
-                  console.log('Resolved variant URL:', resolvedVariantUrl);
-                  const variantImageBase64 = await loadImageAsBase64(resolvedVariantUrl);
-                  console.log('Variant image loaded successfully');
+        //       // Variant image: render near full width
+        //       if (variant.image) {
+        //         try {
+        //           console.log('Loading variant image for PDF:', variant.image);
+        //           const resolvedVariantUrl = resolveAnyImage(variant.image) || variant.image;
+        //           console.log('Resolved variant URL:', resolvedVariantUrl);
+        //           const variantImageBase64 = await loadImageAsBase64(resolvedVariantUrl);
+        //           console.log('Variant image loaded successfully');
                   
-                  const img = new Image();
-                  img.src = variantImageBase64;
-                  await new Promise((resolve, reject) => {
-                    img.onload = resolve;
-                    img.onerror = reject;
-                    setTimeout(reject, 5000); // 5 second timeout
-                  });
+        //           const img = new Image();
+        //           img.src = variantImageBase64;
+        //           await new Promise((resolve, reject) => {
+        //             img.onload = resolve;
+        //             img.onerror = reject;
+        //             setTimeout(reject, 5000); // 5 second timeout
+        //           });
                   
-                  const naturalW = img.naturalWidth || 400;
-                  const naturalH = img.naturalHeight || 300;
+        //           const naturalW = img.naturalWidth || 400;
+        //           const naturalH = img.naturalHeight || 300;
                   
-                  // Scale to fit full page width with margins
-                  const maxWidth = pageWidth - 80; // 40 margin each side
-                  const maxHeight = 420;
-                  const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
-                  const imgW = Math.max(1, Math.round(naturalW * scale));
-                  const imgH = Math.max(1, Math.round(naturalH * scale));
-                  if (y + imgH + 40 > pageHeight - 40) {
-                    doc.addPage();
-                    y = 40;
-                  }
-                  const imageX = 40 + Math.max(0, Math.floor((maxWidth - imgW) / 2));
-                  const imageY = y + 10;
-                  doc.addImage(variantImageBase64, 'PNG', imageX, imageY, imgW, imgH);
-                  y = imageY + imgH + 20;
-                } catch (error) {
-                  console.error(`Variant image ${variant.name} loading failed:`, error);
-                  // Add text fallback
-                  doc.setFontSize(10);
-                  doc.setTextColor('#64748B');
-                    doc.text(`Image not available for ${variant.name}`, pageWidth / 2, dataSectionTop + 20, { align: 'center' });
-                }
-              }
+        //           // Scale to fit full page width with margins
+        //           const maxWidth = pageWidth - 80; // 40 margin each side
+        //           const maxHeight = 420;
+        //           const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
+        //           const imgW = Math.max(1, Math.round(naturalW * scale));
+        //           const imgH = Math.max(1, Math.round(naturalH * scale));
+        //           if (y + imgH + 40 > pageHeight - 40) {
+        //             doc.addPage();
+        //             y = 40;
+        //           }
+        //           const imageX = 40 + Math.max(0, Math.floor((maxWidth - imgW) / 2));
+        //           const imageY = y + 10;
+        //           doc.addImage(variantImageBase64, 'PNG', imageX, imageY, imgW, imgH);
+        //           y = imageY + imgH + 20;
+        //         } catch (error) {
+        //           console.error(`Variant image ${variant.name} loading failed:`, error);
+        //           // Add text fallback
+        //           doc.setFontSize(10);
+        //           doc.setTextColor('#64748B');
+        //             doc.text(`Image not available for ${variant.name}`, pageWidth / 2, dataSectionTop + 20, { align: 'center' });
+        //         }
+        //       }
               
-              y += 20; // Space between variants
-            }
-          } else {
-            // Regular handling for other types
-            // Left column: Dimensions data table
-            if (dims.data && dims.data.length > 0) {
-              const selectedModelData = dims.data.find(row => 
-                row.model.includes(selected?.model?.name || '')
-              );
+        //       y += 20; // Space between variants
+        //     }
+        //   } else {
+        //     // Regular handling for other types
+        //     // Left column: Dimensions data table
+        //     if (dims.data && dims.data.length > 0) {
+        //       const selectedModelData = dims.data.find(row => 
+        //         row.model.includes(selected?.model?.name || '')
+        //       );
               
-              if (selectedModelData) {
-                const baseColumns = dimensionsData.columns || [];
-                const entries = baseColumns
-                  .filter(col => col.key !== 'model')
-                  .map(col => ({ label: col.label, value: selectedModelData[col.key] }))
-                  .filter(entry => entry.value !== undefined && entry.value !== null && entry.value !== '');
+        //       if (selectedModelData) {
+        //         const baseColumns = dimensionsData.columns || [];
+        //         const entries = baseColumns
+        //           .filter(col => col.key !== 'model')
+        //           .map(col => ({ label: col.label, value: selectedModelData[col.key] }))
+        //           .filter(entry => entry.value !== undefined && entry.value !== null && entry.value !== '');
 
-                doc.setFontSize(11);
-                doc.setTextColor('#1e3a8a');
-                doc.text('Dimensions Data', pageWidth / 2, y, { align: 'center' });
-                y += 15;
+        //         doc.setFontSize(11);
+        //         doc.setTextColor('#1e3a8a');
+        //         doc.text('Dimensions Data', pageWidth / 2, y, { align: 'center' });
+        //         y += 15;
 
-                y = drawDimensionsList(entries, y);
-              } else {
-                doc.setFontSize(10);
-                doc.setTextColor('#64748B');
-                doc.text('Dimensions data not available for selected model', pageWidth / 2, y + 12, { align: 'center' });
-                y += 32;
-              }
-            }
+        //         y = drawDimensionsList(entries, y);
+        //       } else {
+        //         doc.setFontSize(10);
+        //         doc.setTextColor('#64748B');
+        //         doc.text('Dimensions data not available for selected model', pageWidth / 2, y + 12, { align: 'center' });
+        //         y += 32;
+        //       }
+        //     }
             
-            // Dimensions image: render near full width
-              if (dims.image) {
-              try {
-                console.log('Loading dimensions image for PDF:', dims.image);
-                const resolvedUrl = resolveAnyImage(dims.image) || dims.image;
-                console.log('Resolved dimensions URL:', resolvedUrl);
-                const dimensionsImageBase64 = await loadImageAsBase64(resolvedUrl);
-                console.log('Dimensions image loaded successfully');
+        //     // Dimensions image: render near full width
+        //       if (dims.image) {
+        //       try {
+        //         console.log('Loading dimensions image for PDF:', dims.image);
+        //         const resolvedUrl = resolveAnyImage(dims.image) || dims.image;
+        //         console.log('Resolved dimensions URL:', resolvedUrl);
+        //         const dimensionsImageBase64 = await loadImageAsBase64(resolvedUrl);
+        //         console.log('Dimensions image loaded successfully');
                 
-                const img = new Image();
-                img.src = dimensionsImageBase64;
-                await new Promise((resolve, reject) => {
-                  img.onload = resolve;
-                  img.onerror = reject;
-                  setTimeout(reject, 5000); // 5 second timeout
-                });
+        //         const img = new Image();
+        //         img.src = dimensionsImageBase64;
+        //         await new Promise((resolve, reject) => {
+        //           img.onload = resolve;
+        //           img.onerror = reject;
+        //           setTimeout(reject, 5000); // 5 second timeout
+        //         });
                 
-                const naturalW = img.naturalWidth || 400;
-                const naturalH = img.naturalHeight || 300;
-                const maxWidth = pageWidth - 80; // margins
-                const maxHeight = 420;
-                const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
-                const imgW = Math.max(1, Math.round(naturalW * scale));
-                const imgH = Math.max(1, Math.round(naturalH * scale));
-                if (y + imgH + 40 > pageHeight - 40) {
-                  doc.addPage();
-                  y = 40;
-                }
-                const imageX = 40 + Math.max(0, Math.floor((maxWidth - imgW) / 2));
-                const imageY = y + 20;
-                doc.addImage(dimensionsImageBase64, 'PNG', imageX, imageY, imgW, imgH);
-                y = imageY + imgH + 20;
-              } catch (error) {
-                  console.error('Dimensions image loading failed:', error);
-                // Add text fallback
-                doc.setFontSize(10);
-                doc.setTextColor('#64748B');
-                doc.text('Dimensions image not available', pageWidth / 2, y + 30, { align: 'center' });
-              }
-            }
-          }
-        }
+        //         const naturalW = img.naturalWidth || 400;
+        //         const naturalH = img.naturalHeight || 300;
+        //         const maxWidth = pageWidth - 80; // margins
+        //         const maxHeight = 420;
+        //         const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
+        //         const imgW = Math.max(1, Math.round(naturalW * scale));
+        //         const imgH = Math.max(1, Math.round(naturalH * scale));
+        //         if (y + imgH + 40 > pageHeight - 40) {
+        //           doc.addPage();
+        //           y = 40;
+        //         }
+        //         const imageX = 40 + Math.max(0, Math.floor((maxWidth - imgW) / 2));
+        //         const imageY = y + 20;
+        //         doc.addImage(dimensionsImageBase64, 'PNG', imageX, imageY, imgW, imgH);
+        //         y = imageY + imgH + 20;
+        //       } catch (error) {
+        //           console.error('Dimensions image loading failed:', error);
+        //         // Add text fallback
+        //         doc.setFontSize(10);
+        //         doc.setTextColor('#64748B');
+        //         doc.text('Dimensions image not available', pageWidth / 2, y + 30, { align: 'center' });
+        //       }
+        //     }
+        //   }
+        // }
       } catch (error) {
         console.log('Dimensions section not loaded:', error);
       }
@@ -2003,7 +2039,7 @@ const FlowSearch = () => {
           doc.text('Dimensions', 40, y);
           y += 20;
 
-          if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR') || (typeKeyForPdf === 'NBR_D') || (typeKeyForPdf === 'NBS_D')) && dims.variants) {
+          if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR') || (typeKeyForPdf === 'NBR_D') || (typeKeyForPdf === 'NBS_D') || (typeKeyForPdf === 'NPD')) && dims.variants) {
             const filteredVariants = dims.variants.filter(variant => {
               if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') return variant.name.includes('Fan Section Type');
               if (series === 'NBR-D' || series === 'NBS-D') return variant.name.includes('Dimensions');
@@ -2046,18 +2082,7 @@ const FlowSearch = () => {
               }
 
               const modelName = selected?.model?.name || '';
-              const key = getBaseModelNumber(modelName) || modelName.replace(/^[A-Z-]+\s*/, '').trim();
-              let selectedModelData = variant.data.find(row => {
-                const rowModel = String(row.model || '');
-                return rowModel === key || rowModel.includes(key) || modelName.includes(rowModel);
-              });
-              if (!selectedModelData) {
-                // Broaden matching: compare only digits (e.g., 400)
-                const digits = (key.match(/\d+/)?.[0]) || '';
-                if (digits) {
-                  selectedModelData = variant.data.find(row => String(row.model || '').includes(digits));
-                }
-              }
+              const selectedModelData = findDimensionsRowMatch(variant.data || [], modelName);
               if (selectedModelData) {
                 const variantColumns = variant.columns || dims.columns || [];
                 const entries = variantColumns.filter(col => col.key !== 'model').map(col => ({ label: col.label, value: selectedModelData[col.key] })).filter(e => e.value !== undefined && e.value !== null && e.value !== '');
@@ -2097,21 +2122,7 @@ const FlowSearch = () => {
 
             if (dims.data && dims.data.length > 0) {
               const fullModelName = selected?.model?.name || '';
-              const preMMatch = fullModelName.match(/(\d+)\s*M\d+/i);
-              const preMNumber = preMMatch ? preMMatch[1] : null;
-              const modelNumber = fullModelName.replace(/^[A-Z-]+\s*/i, '').trim();
-              const selectedModelData = dims.data.find(row => {
-                const rowModel = String(row.model || '').trim();
-                return (
-                  rowModel === fullModelName ||
-                  rowModel === modelNumber ||
-                  (preMNumber ? (rowModel === preMNumber || rowModel.includes(preMNumber)) : false) ||
-                  rowModel.includes(fullModelName) ||
-                  rowModel.includes(modelNumber) ||
-                  fullModelName.includes(rowModel) ||
-                  modelNumber.includes(rowModel)
-                );
-              });
+              const selectedModelData = findDimensionsRowMatch(dims.data, fullModelName);
 
               if (selectedModelData) {
                 const baseColumns = dims.columns || [];
