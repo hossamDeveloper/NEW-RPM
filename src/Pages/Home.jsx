@@ -74,7 +74,7 @@ const Home = () => {
             to="/flow-search"
             className="w-full text-center py-3 px-4 rounded-xl text-white font-semibold bg-gradient-to-r from-[#60A5FA] to-[#3B82F6] hover:from-[#3B82F6] hover:to-[#2563EB] transition-all duration-200 shadow border border-transparent hover:border-[#F59E0B]"
           >
-            Start Selecting
+            Start Selecting Flow
           </Link>
         </motion.div>
       </div>

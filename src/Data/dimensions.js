@@ -589,7 +589,7 @@ export const dimensionsData = {
       },
       {
         name: "NBR-D Dimensions",
-        image: "/src/assets/dimensions/Double after.png",
+        image: "/src/assets/dimensions/NRT.png",
         data: [
           { model: "310", A: 330, B: 452, C: 337, D: 703, E: 22, F: 6, G: 24.5, H: 380, J: 381.7, K: 249.2, L: 534.4, M: 40, N: 150, O: 406, P: 628, mass: 75 },
           { model: "340", A: 366, B: 498, C: 371, D: 765, E: 25, F: 8, G: 28, H: 415, J: 412.7, K: 272.2, L: 580.4, M: 40, N: 165, O: 432, P: 688, mass: 85 },
@@ -673,7 +673,7 @@ export const dimensionsData = {
 
       {
         name: "NBS-D Dimensions",
-        image: "/src/assets/dimensions/Double after.png",
+        image: "/src/assets/dimensions/NRT.png",
         data: [
           { model: "310", A: 330, B: 452, C: 337, D: 703, E: 22, F: 6, G: 24.5, H: 380, J: 381.7, K: 249.2, L: 534.4, M: 40, N: 150, O: 406, P: 628, mass: 75 },
           { model: "340", A: 366, B: 498, C: 371, D: 765, E: 25, F: 8, G: 28, H: 415, J: 412.7, K: 272.2, L: 580.4, M: 40, N: 165, O: 432, P: 688, mass: 85 },
