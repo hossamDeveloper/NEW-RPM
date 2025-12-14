@@ -2305,8 +2305,8 @@ const FlowSearch = () => {
                     <select value={pressureClass} onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setPressureClass(e.target.value); setLowConfig(''); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                       <option value="">Select pressure</option>
                       <option value="low">Low Pressure</option>
-                      {/* <option value="medium">Medium Pressure</option>
-                      <option value="high">High Pressure</option> */}
+                      <option value="medium">Medium Pressure</option>
+                      <option value="high">High Pressure</option>
                     </select>
                   </div>
                   {pressureClass === 'low' && (
