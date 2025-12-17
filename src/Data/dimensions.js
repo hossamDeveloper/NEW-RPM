@@ -794,6 +794,83 @@ export const dimensionsData = {
         }
       ]
     },
+    NPF: {
+      name: "Centrifugal Medium Pressure (NPF)",
+      variants: [
+        {
+          name: "NPF",
+          image: "/src/assets/dimensions/NPF1.jpeg",
+          data: [
+            { model: "315", A_dia: "95", B: "85", C: "65", D: "300", F: "475", H: "370", Q: "165", R_dia: "10", N: "50" },
+            { model: "355", A_dia: "105", B: "95", C: "75", D: "300", F: "485", H: "420", Q: "190", R_dia: "10", N: "50" },
+            { model: "400", A_dia: "120", B: "105", C: "85", D: "377", F: "572", H: "480", Q: "220", R_dia: "12", N: "50" },
+            { model: "450", A_dia: "135", B: "120", C: "95", D: "377", F: "582", H: "520", Q: "240", R_dia: "12", N: "80" },
+            { model: "500", A_dia: "150", B: "135", C: "105", D: "460", F: "725", H: "570", Q: "260", R_dia: "14", N: "80" },
+            { model: "560", A_dia: "170", B: "150", C: "120", D: "460", F: "740", H: "610", Q: "280", R_dia: "14", N: "80" },
+            { model: "630", A_dia: "190", B: "170", C: "135", D: "620", F: "915", H: "700", Q: "325", R_dia: "14", N: "100" },
+            { model: "710", A_dia: "215", B: "190", C: "150", D: "630", F: "990", H: "800", Q: "375", R_dia: "14", N: "100" },
+            { model: "800", A_dia: "240", B: "215", C: "170", D: "630", F: "1020", H: "890", Q: "415", R_dia: "14", N: "100" },
+            { model: "900", A_dia: "270", B: "240", C: "190", D: "680", F: "1080", H: "990", Q: "465", R_dia: "14", N: "100" },
+            { model: "1000", A_dia: "300", B: "275", C: "210", D: "680", F: "1100", H: "1090", Q: "515", R_dia: "14", N: "100" },
+            { model: "1120", A_dia: "335", B: "310", C: "235", D: "680", F: "1175", H: "1210", Q: "575", R_dia: "14", N: "100" },
+            { model: "1250", A_dia: "375", B: "345", C: "265", D: "680", F: "1205", H: "1340", Q: "640", R_dia: "14", N: "100" },
+            { model: "1400", A_dia: "420", B: "385", C: "295", D: "680", F: "1235", H: "1500", Q: "720", R_dia: "14", N: "100" },
+            { model: "1600", A_dia: "480", B: "440", C: "340", D: "790", F: "1430", H: "1710", Q: "825", R_dia: "14", N: "100" },
+            { model: "1800", A_dia: "540", B: "495", C: "385", D: "790", F: "1465", H: "1910", Q: "925", R_dia: "14", N: "100" },
+            { model: "2000", A_dia: "600", B: "550", C: "430", D: "820", F: "1540", H: "2130", Q: "1035", R_dia: "14", N: "100" }
+          ],
+          columns: [
+            { key: "model", label: "Type" },
+            { key: "A_dia", label: "Ø A" },
+            { key: "B", label: "B" },
+            { key: "C", label: "C" },
+            { key: "D", label: "D" },
+            { key: "F", label: "F" },
+            { key: "H", label: "H" },
+            { key: "Q", label: "Q" },
+            { key: "R_dia", label: "Ø R" },
+            { key: "N", label: "N" }
+          ]
+        },
+        {
+          name: "NPF",
+          image: "/src/assets/dimensions/NPF2.jpeg",
+          data: [
+            { model: "315", A: "245", B: "203", C: "224", D: "182", E: "340", F: "340", K1_K4: "290" },
+            { model: "355", A: "284", B: "236", C: "260", D: "212", E: "380", F: "380", K1_K4: "330" },
+            { model: "400", A: "310", B: "248", C: "284", D: "222", E: "405", F: "405", K1_K4: "355" },
+            { model: "450", A: "354", B: "294", C: "324", D: "264", E: "450", F: "450", K1_K4: "400" },
+            { model: "500", A: "393", B: "325", C: "359", D: "291", E: "490", F: "490", K1_K4: "440" },
+            { model: "560", A: "441", B: "366", C: "404", D: "328", E: "540", F: "540", K1_K4: "490" },
+            { model: "630", A: "498", B: "412", C: "455", D: "369", E: "615", F: "615", K1_K4: "545" },
+            { model: "710", A: "554", B: "459", C: "507", D: "408", E: "510", F: "510", K1: "555", K2: "505", K3: "455", K4: "600" },
+            { model: "800", A: "620", B: "512", C: "566", D: "458", E: "580", F: "580", K1: "615", K2: "565", K3: "510", K4: "670" },
+            { model: "900", A: "694", B: "574", C: "634", D: "514", E: "645", F: "645", K1: "690", K2: "630", K3: "565", K4: "750" },
+            { model: "1000", A: "798", B: "660", C: "729", D: "591", E: "730", F: "730", K1: "780", K2: "710", K3: "630", K4: "855" },
+            { model: "1120", A: "884", B: "728", C: "806", D: "650", E: "800", F: "800", K1: "850", K2: "780", K3: "700", K4: "940" },
+            { model: "1250", A: "972", B: "802", C: "886", D: "714", E: "920", F: "920", K1: "940", K2: "860", K3: "770", K4: "1030" },
+            { model: "1400", A: "1083", B: "891", C: "987", D: "795", E: "1000", F: "1000", K1: "1040", K2: "950", K3: "850", K4: "1150" },
+            { model: "1600", A: "1255", B: "1035", C: "1145", D: "925", E: "1170", F: "1170", K1: "1200", K2: "1085", K3: "970", K4: "1315" },
+            { model: "1800", A: "1392", B: "1144", C: "1268", D: "1020", E: "1280", F: "1280", K1: "1320", K2: "1230", K3: "1080", K4: "1480" },
+            { model: "2000", A: "1500", B: "1293", C: "1431", D: "1155", E: "1455", F: "1455", K1: "1480", K2: "1340", K3: "1205", K4: "1640" }
+          ],
+          columns: [
+            { key: "model", label: "Type" },
+            { key: "A", label: "A" },
+            { key: "B", label: "B" },
+            { key: "C", label: "C" },
+            { key: "D", label: "D" },
+            { key: "E", label: "E" },
+            { key: "F", label: "F" },
+            { key: "K1", label: "K1" },
+            { key: "K2", label: "K2" },
+            { key: "K3", label: "K3" },
+            { key: "K4", label: "K4" },
+            { key: "K1_K4", label: "K1 + K4" }
+          ]
+        }
+      ]
+    },
     NEI2D: {
       name: "Axial jet fan (NEI2D)",
       image: null,
@@ -808,8 +885,13 @@ export const dimensionsData = {
     
     if (typeData.variants) {
     const matches = typeData.variants.filter(v => 
-      v.data.some(row => row.model.includes(model))
+      v.data.some(row => {
+        const rowModel = String(row.model || '');
+        const needle = String(model || '');
+        return rowModel.includes(needle) || needle.includes(rowModel);
+      })
     );
+    // v.data.some(row => row.model.includes(model))  );
     if (matches.length === 0) return null;
     // Prefer NBR2 for NBR when both variants match
     const preferred = (type === 'NBR') ? (matches.find(v => v.name === 'NBR2') || matches[0]) : matches[0];

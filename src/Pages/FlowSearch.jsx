@@ -2039,7 +2039,17 @@ const FlowSearch = () => {
           doc.text('Dimensions', 40, y);
           y += 20;
 
-          if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR') || (typeKeyForPdf === 'NBR_D') || (typeKeyForPdf === 'NBS_D') || (typeKeyForPdf === 'NPD')) && dims.variants) {
+          if (
+            (
+              axialType === 'NEID' ||
+              typeKeyForPdf === 'NBR' ||
+              typeKeyForPdf === 'NBR_D' ||
+              typeKeyForPdf === 'NBS_D' ||
+              typeKeyForPdf === 'NPD' ||
+              typeKeyForPdf === 'NPF'
+            ) &&
+            dims.variants
+          ) {
             const filteredVariants = dims.variants.filter(variant => {
               if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') return variant.name.includes('Fan Section Type');
               if (series === 'NBR-D' || series === 'NBS-D') return variant.name.includes('Dimensions');
@@ -2157,6 +2167,10 @@ const FlowSearch = () => {
       if (series === 'NBR-D' || series === 'NBR_D' || series === 'NBR-D FAN SECTION TYPE') return 'NBR_D';
       if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D FAN SECTION TYPE') return 'NBS_D';
       if (String(series) === 'NPD') return 'NPD';
+      // NPE dimensions are the same as NPD (per requirement)
+      if (String(series) === 'NPE') return 'NPD';
+      // High pressure NPF has its own dimensions block
+      if (String(series) === 'NPF') return 'NPF';
     }
     return null;
   };
@@ -2165,7 +2179,14 @@ const FlowSearch = () => {
     const typeKey = getCurrentDimensionsType();
     if (!typeKey || !selected?.model?.name) return null;
     // For types with multiple variants (e.g., NEID, NBR, NBR-D, NBS-D), return the full type with variants
-    if (typeKey === 'NBR' || typeKey === 'NBR_D' || typeKey === 'NBS_D' || typeKey === 'NPD' || axialType === 'NEID') {
+    if (
+      typeKey === 'NBR' ||
+      typeKey === 'NBR_D' ||
+      typeKey === 'NBS_D' ||
+      typeKey === 'NPD' ||
+      typeKey === 'NPF' ||
+      axialType === 'NEID'
+    ) {
       return dimensionsData[typeKey] || null;
     }
     return getDimensionsData(typeKey, selected.model.name);
@@ -2696,9 +2717,19 @@ const FlowSearch = () => {
                         );
                       }
 
-                      // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D, NPD)
+                      // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D, NPD, NPF)
                       const currentType = getCurrentDimensionsType();
-                      if (((axialType === 'NEID') || (currentType === 'NBR') || (currentType === 'NBR_D') || (currentType === 'NBS_D') || (currentType === 'NPD')) && dimensionsData.variants) {
+                      if (
+                        (
+                          axialType === 'NEID' ||
+                          currentType === 'NBR' ||
+                          currentType === 'NBR_D' ||
+                          currentType === 'NBS_D' ||
+                          currentType === 'NPD' ||
+                          currentType === 'NPF'
+                        ) &&
+                        dimensionsData.variants
+                      ) {
                         // Filter variants based on selected series
                         const filteredVariants = dimensionsData.variants.filter(variant => {
                           if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') {
