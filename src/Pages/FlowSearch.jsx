@@ -2046,6 +2046,7 @@ const FlowSearch = () => {
               typeKeyForPdf === 'NBR_D' ||
               typeKeyForPdf === 'NBS_D' ||
               typeKeyForPdf === 'NPD' ||
+              typeKeyForPdf === 'NPE' ||
               typeKeyForPdf === 'NPF'
             ) &&
             dims.variants
@@ -2167,9 +2168,7 @@ const FlowSearch = () => {
       if (series === 'NBR-D' || series === 'NBR_D' || series === 'NBR-D FAN SECTION TYPE') return 'NBR_D';
       if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D FAN SECTION TYPE') return 'NBS_D';
       if (String(series) === 'NPD') return 'NPD';
-      // NPE dimensions are the same as NPD (per requirement)
-      if (String(series) === 'NPE') return 'NPD';
-      // High pressure NPF has its own dimensions block
+      if (String(series) === 'NPE') return 'NPE';
       if (String(series) === 'NPF') return 'NPF';
     }
     return null;
@@ -2178,12 +2177,13 @@ const FlowSearch = () => {
   const getCurrentDimensionsData = () => {
     const typeKey = getCurrentDimensionsType();
     if (!typeKey || !selected?.model?.name) return null;
-    // For types with multiple variants (e.g., NEID, NBR, NBR-D, NBS-D), return the full type with variants
+    // For types with multiple variants (e.g., NEID, NBR, NBR-D, NBS-D, NPD, NPE, NPF), return the full type with variants
     if (
       typeKey === 'NBR' ||
       typeKey === 'NBR_D' ||
       typeKey === 'NBS_D' ||
       typeKey === 'NPD' ||
+      typeKey === 'NPE' ||
       typeKey === 'NPF' ||
       axialType === 'NEID'
     ) {
@@ -2717,7 +2717,7 @@ const FlowSearch = () => {
                         );
                       }
 
-                      // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D, NPD, NPF)
+                      // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D, NPD, NPE, NPF)
                       const currentType = getCurrentDimensionsType();
                       if (
                         (
@@ -2726,6 +2726,7 @@ const FlowSearch = () => {
                           currentType === 'NBR_D' ||
                           currentType === 'NBS_D' ||
                           currentType === 'NPD' ||
+                          currentType === 'NPE' ||
                           currentType === 'NPF'
                         ) &&
                         dimensionsData.variants
