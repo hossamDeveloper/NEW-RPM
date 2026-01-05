@@ -1510,10 +1510,10 @@ const FlowSearch = () => {
         `Drive Type: ${driveType || '-'}`,
         `Model: ${selectedModel || '-'}`,
       ];
-      const infoStartY = y;
-      info.forEach((t) => { doc.text(t, 40, y); y += 30; });
-
+      
       // Add selected product type image (axial or centrifugal)
+      let imgH = 0;
+      let imgY = y;
       try {
         let productImage = null;
         let productName = '';
@@ -1547,14 +1547,37 @@ const FlowSearch = () => {
           const maxH = 160;
           const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
           const imgW = Math.max(1, Math.round(naturalW * scale));
-          const imgH = Math.max(1, Math.round(naturalH * scale));
+          imgH = Math.max(1, Math.round(naturalH * scale));
           const imgX = pageWidth - 40 - imgW;
-          const imgY = infoStartY - 4;
+          imgY = y;
           
+          // Calculate center of image
+          const imageCenterY = imgY + imgH / 2;
+          
+          // Calculate total height of text info
+          const lineHeight = 30;
+          const totalTextHeight = info.length * lineHeight;
+          const textCenterY = y + totalTextHeight / 2;
+          
+          // Adjust infoStartY so that text center aligns with image center
+          const infoStartY = imageCenterY - totalTextHeight / 2;
+          
+          // Draw image
           doc.addImage(productImageBase64, 'PNG', imgX, imgY, imgW, imgH);
-          y = Math.max(y, imgY + imgH + 8);
+          
+          // Draw text info aligned to image center
+          let currentY = infoStartY;
+          info.forEach((t) => { 
+            doc.text(t, 40, currentY); 
+            currentY += lineHeight; 
+          });
+          
+          y = Math.max(currentY, imgY + imgH + 8);
         } else {
           console.warn(`No ${fanCategory} product image found for:`, fanCategory === 'axial' ? axialType : series);
+          // If no image, draw text normally
+          const infoStartY = y;
+          info.forEach((t) => { doc.text(t, 40, y); y += 30; });
         }
       } catch (error) {
         console.error(`${fanCategory} product image loading failed:`, error);
@@ -1562,17 +1585,20 @@ const FlowSearch = () => {
         doc.setFontSize(10);
         doc.setTextColor('#64748B');
         const productType = fanCategory === 'axial' ? axialType : series;
-        doc.text(`Image not available for ${productType}`, pageWidth - 200, infoStartY + 20);
+        doc.text(`Image not available for ${productType}`, pageWidth - 200, y + 20);
+        // Draw text info normally if image failed
+        const infoStartY = y;
+        info.forEach((t) => { doc.text(t, 40, y); y += 30; });
       }
-      y += 8;
+      y += 40;
 
       // Working Point
       if (closestPoint) {
         doc.setFontSize(13);
         doc.setTextColor('#1e3a8a');
         doc.text('Working Point', 40, y);
-        y += 10;
-        doc.setFontSize(12);
+        y += 10; // Increased spacing from title
+        doc.setFontSize(14); // Increased font size from 12 to 14
         doc.setTextColor('#334155');
         const wpRows = [
           ['RPM', `${selected?.rpm?.rpm} `],
@@ -1581,7 +1607,7 @@ const FlowSearch = () => {
           ['Static Pressure', `${Number(convertChartPressureValue(Number(closestPoint.staticPressure))).toFixed(6)} ${getPressureUnitLabel()}`],
           ['Efficiency', `${Number(closestPoint.efficiency).toFixed(2)} %`],
           ['Brake Power', `${Number(closestPoint.brakePower).toFixed(6)} kw`],
-          ['Installed', `${(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw`],
+          // ['Installed', `${(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw`],
           ['LPA', `${(Number(closestPoint.lpa)).toFixed(6)} db`],
         ];
         const marginX = 40;
@@ -1590,24 +1616,24 @@ const FlowSearch = () => {
         const rowsPerCol = Math.ceil(wpRows.length / 2);
         const leftRows = wpRows.slice(0, rowsPerCol);
         const rightRows = wpRows.slice(rowsPerCol);
-        const rowHeight = 24;
-        const cellPadding = 8;
+        const rowHeight = 30; // Increased from 24 to 30
+        const cellPadding = 12; // Increased from 8 to 12
         
         const drawCol = (x, startY, rows) => {
           doc.setDrawColor(229, 237, 255);
           doc.setLineWidth(0.5);
           rows.forEach((row, idx) => {
             const rowTop = startY + idx * rowHeight;
-            const textY = rowTop + 16;
+            const textY = rowTop + 20; // Adjusted for larger row height
             doc.rect(x, rowTop, colWidth, rowHeight);
             doc.setFont(undefined, 'bold');
             doc.text(`${row[0]}:`, x + cellPadding, textY);
             doc.setFont(undefined, 'normal');
-            doc.text(String(row[1]), x + cellPadding + 110, textY);
+            doc.text(String(row[1]), x + cellPadding + 120, textY); // Increased spacing from 110 to 120
           });
         };
         
-        const tableTop = y + 8;
+        const tableTop = y + 15; // Increased spacing from 8 to 15 to move table down
         drawCol(marginX, tableTop, leftRows);
         drawCol(marginX + colWidth + gap, tableTop, rightRows);
         y = tableTop + rowsPerCol * rowHeight + 22;
@@ -1982,14 +2008,18 @@ const FlowSearch = () => {
           }
           if (!imgData) return;
           const targetHeight = 280;
-          if (y + (targetHeight + 40) > doc.internal.pageSize.getHeight() - 40) {
+          const titleHeight = 14;
+          const bottomMargin = 40;
+          // Check if there's enough space for both title and chart before writing title
+          // If not enough space, add new page BEFORE writing the title
+          if (y + titleHeight + targetHeight + bottomMargin > pageHeight - bottomMargin) {
             doc.addPage();
             y = 40;
           }
           doc.setFontSize(13);
           doc.setTextColor('#1e3a8a');
           doc.text(title, 40, y);
-          y += 14;
+          y += titleHeight;
           doc.addImage(imgData, 'PNG', 40, y, pageWidth - 80, targetHeight);
           y += targetHeight + 20;
         } catch (error) {
@@ -2030,14 +2060,23 @@ const FlowSearch = () => {
           dims = getDimensionsData(typeKeyForPdf, fullModelNameForPdf) || (preMNumberPdf ? getDimensionsData(typeKeyForPdf, preMNumberPdf) : null);
         }
         if (dims) {
-          if (y + 300 > pageHeight - 40) {
+          const dimensionsTitleHeight = 20;
+          // Calculate maximum possible content height (image max 420 + data title 15 + data list ~200 + margins)
+          const maxImageHeight = 420;
+          const maxDataTitleHeight = 15;
+          const maxDataListHeight = 200;
+          const maxContentHeight = maxImageHeight + maxDataTitleHeight + maxDataListHeight + 50; // 50 for margins
+          const bottomMargin = 40;
+          // Check if there's enough space for both title and maximum possible content before writing title
+          // If not enough space, add new page BEFORE writing the title
+          if (y + dimensionsTitleHeight + maxContentHeight + bottomMargin > pageHeight - bottomMargin) {
             doc.addPage();
             y = 40;
           }
           doc.setFontSize(13);
           doc.setTextColor('#1e3a8a');
           doc.text('Dimensions', 40, y);
-          y += 20;
+          y += dimensionsTitleHeight;
 
           if (
             (
@@ -2062,11 +2101,23 @@ const FlowSearch = () => {
             });
 
             for (const variant of filteredVariants) {
-              if (y + 250 > pageHeight - 40) { doc.addPage(); y = 40; }
+              const variantTitleHeight = 15;
+              // Calculate maximum possible content height (image max 420 + data title 14 + data list ~200 + margins)
+              const maxImageHeight = 420;
+              const maxDataTitleHeight = 14;
+              const maxDataListHeight = 200;
+              const maxVariantContentHeight = maxImageHeight + maxDataTitleHeight + maxDataListHeight + 50; // 50 for margins
+              const bottomMargin = 40;
+              // Check if there's enough space for both title and maximum possible content before writing title
+              // If not enough space, add new page BEFORE writing the title
+              if (y + variantTitleHeight + maxVariantContentHeight + bottomMargin > pageHeight - bottomMargin) {
+                doc.addPage();
+                y = 40;
+              }
               doc.setFontSize(12);
               doc.setTextColor('#1e3a8a');
               doc.text(variant.name, 40, y);
-              y += 15;
+              y += variantTitleHeight;
 
               const dataSectionTop = y;
 
@@ -2081,7 +2132,8 @@ const FlowSearch = () => {
                   const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
                   const imgW = Math.max(1, Math.round(naturalW * scale));
                   const imgH = Math.max(1, Math.round(naturalH * scale));
-                  if (y + imgH + 40 > pageHeight - 40) { doc.addPage(); y = 40; }
+                  // Don't add page break here - already checked before variant title
+                  // if (y + imgH + 40 > pageHeight - 40) { doc.addPage(); y = 40; }
                   const imageX = 40 + Math.max(0, Math.floor((maxWidth - imgW) / 2));
                   const imageY = y + 10;
                   doc.addImage(variantImageBase64, 'PNG', imageX, imageY, imgW, imgH);
@@ -2097,8 +2149,20 @@ const FlowSearch = () => {
               if (selectedModelData) {
                 const variantColumns = variant.columns || dims.columns || [];
                 const entries = variantColumns.filter(col => col.key !== 'model').map(col => ({ label: col.label, value: selectedModelData[col.key] })).filter(e => e.value !== undefined && e.value !== null && e.value !== '');
+                // Calculate approximate height of dimensions list
+                const dataTitleHeight = 14;
+                const rowHeight = 18;
+                const columns = 2;
+                const rowsPerColumn = Math.ceil(entries.length / columns);
+                const estimatedListHeight = rowsPerColumn * rowHeight + 20;
+                const bottomMargin = 40;
+                // Check if there's enough space for both title and data list before writing title
+                if (y + dataTitleHeight + estimatedListHeight + bottomMargin > pageHeight - bottomMargin) {
+                  doc.addPage();
+                  y = 40;
+                }
                 doc.setFontSize(11); doc.setTextColor('#1e3a8a');
-                doc.text('Dimensions Data', pageWidth / 2, y, { align: 'center' }); y += 14;
+                doc.text('Dimensions Data', pageWidth / 2, y, { align: 'center' }); y += dataTitleHeight;
                 y = drawDimensionsList(entries, y);
               } else {
                 doc.setFontSize(10); doc.setTextColor('#64748B');
@@ -2120,7 +2184,8 @@ const FlowSearch = () => {
                 const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
                 const imgW = Math.max(1, Math.round(naturalW * scale));
                 const imgH = Math.max(1, Math.round(naturalH * scale));
-                if (y + imgH + 40 > pageHeight - 40) { doc.addPage(); y = 40; }
+                // Don't add page break here - already checked before Dimensions title
+                // if (y + imgH + 40 > pageHeight - 40) { doc.addPage(); y = 40; }
                 const imageX = 40 + Math.max(0, Math.floor((maxWidth - imgW) / 2));
                 const imageY = y + 10;
                 doc.addImage(dimensionsImageBase64, 'PNG', imageX, imageY, imgW, imgH);
@@ -2138,8 +2203,20 @@ const FlowSearch = () => {
               if (selectedModelData) {
                 const baseColumns = dims.columns || [];
                 const entries = baseColumns.filter(col => col.key !== 'model').map(col => ({ label: col.label, value: selectedModelData[col.key] })).filter(e => e.value !== undefined && e.value !== null && e.value !== '');
+                // Calculate approximate height of dimensions list
+                const dataTitleHeight = 15;
+                const rowHeight = 18;
+                const columns = 2;
+                const rowsPerColumn = Math.ceil(entries.length / columns);
+                const estimatedListHeight = rowsPerColumn * rowHeight + 20;
+                const bottomMargin = 40;
+                // Check if there's enough space for both title and data list before writing title
+                if (y + dataTitleHeight + estimatedListHeight + bottomMargin > pageHeight - bottomMargin) {
+                  doc.addPage();
+                  y = 40;
+                }
                 doc.setFontSize(11); doc.setTextColor('#1e3a8a');
-                doc.text('Dimensions Data', pageWidth / 2, y, { align: 'center' }); y += 15;
+                doc.text('Dimensions Data', pageWidth / 2, y, { align: 'center' }); y += dataTitleHeight;
                 y = drawDimensionsList(entries, y);
               } else {
                 doc.setFontSize(10); doc.setTextColor('#64748B');
