@@ -1490,7 +1490,7 @@ const FlowSearch = () => {
       doc.setFontSize(16);
       doc.setTextColor('#1e3a8a');
       doc.text('Technical Submittal', pageWidth / 2, y, { align: 'center' });
-      y += 22;
+      y += 40;
 
       // Selected info
       doc.setFontSize(12);
@@ -1598,7 +1598,7 @@ const FlowSearch = () => {
         doc.setTextColor('#1e3a8a');
         doc.text('Working Point', 40, y);
         y += 10; // Increased spacing from title
-        doc.setFontSize(14); // Increased font size from 12 to 14
+        doc.setFontSize(12); // Increased font size from 12 to 14
         doc.setTextColor('#334155');
         const wpRows = [
           ['RPM', `${selected?.rpm?.rpm} `],
@@ -1608,7 +1608,7 @@ const FlowSearch = () => {
           ['Efficiency', `${Number(closestPoint.efficiency).toFixed(2)} %`],
           ['Brake Power', `${Number(closestPoint.brakePower).toFixed(6)} kw`],
           // ['Installed', `${(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw`],
-          ['LPA', `${(Number(closestPoint.lpa)).toFixed(6)} db`],
+          ['Sound Level(LPA)', `${(Number(closestPoint.lpa)).toFixed(6)} db`],
         ];
         const marginX = 40;
         const gap = 24;
@@ -2656,7 +2656,7 @@ const FlowSearch = () => {
                             <tr><td className="py-2 px-4">Efficiency</td><td className="py-2 px-4">{Number(closestPoint.efficiency).toFixed(6)} %</td></tr>
                             <tr><td className="py-2 px-4">Brake Power</td><td className="py-2 px-4">{Number(closestPoint.brakePower).toFixed(6)} kw</td></tr>
                             {/* <tr><td className="py-2 px-4">Installed</td><td className="py-2 px-4">{(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw</td></tr> */}
-                            <tr><td className="py-2 px-4">LPA</td><td className="py-2 px-4">{Number(closestPoint.lpa).toFixed(6)} db</td></tr>
+                            <tr><td className="py-2 px-4">Sound Level(LPA)</td><td className="py-2 px-4">{Number(closestPoint.lpa).toFixed(6)} db</td></tr>
                         <tr><td className="py-2 px-4">Dynamic Pressure</td><td className="py-2 px-4">{Number(convertChartPressureValue(Number(closestPoint.dynamicPressure))).toFixed(6)} {getPressureUnitLabel()}</td></tr>
                         <tr><td className="py-2 px-4">Flow Rate Error</td><td className="py-2 px-4">{Number(closestPoint.flowRateError).toFixed(6)}</td></tr>
                         <tr><td className="py-2 px-4">Total Pressure Error</td><td className="py-2 px-4">{Number(closestPoint.totalPressureError).toFixed(6)}</td></tr>
