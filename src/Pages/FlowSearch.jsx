@@ -243,7 +243,7 @@ const FlowSearch = () => {
   };
 
   const axialCatalog = [
-    { code: 'NEI2D', label: 'Axial jet fan (NEI2D)' },
+    // { code: 'NEI2D', label: 'Axial jet fan (NEI2D)' }, // Hidden temporarily
     { code: 'NEI3D', label: 'Axial box inline (NEI3D)' },
     { code: 'NRT', label: 'Axial roof top (NRT)' },
     { code: 'NEIDS', label: 'Axial fire rated smoke (NEIDS)' },
@@ -430,7 +430,7 @@ const FlowSearch = () => {
           const seriesNorm = normalizeSeries(series);
           const rpmFactor = ['NBS-D','NBS_D'].includes(seriesNorm) ? 1.012974052 : 1.0063559;
           const flowFactor = 2;
-          const lpaAdd = 5.8;
+          const Add = 5.8;
           const brakePowerFactor = 2.059242;
           // const totalPressureFactor = 1.0649448;
           const dynamicPressureFactor = 1.180619;
