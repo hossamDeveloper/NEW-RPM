@@ -430,7 +430,7 @@ const FlowSearch = () => {
           const seriesNorm = normalizeSeries(series);
           const rpmFactor = ['NBS-D','NBS_D'].includes(seriesNorm) ? 1.012974052 : 1.0063559;
           const flowFactor = 2;
-          const Add = 5.8;
+          const lpaAdd = 5.8;
           const brakePowerFactor = 2.059242;
           // const totalPressureFactor = 1.0649448;
           const dynamicPressureFactor = 1.180619;
@@ -490,7 +490,9 @@ const FlowSearch = () => {
       }
     },
     onError: (err) => {
-      const msg = err?.response?.data?.message || 'Search request failed';
+      console.error('Search request error:', err);
+      console.error('Error response:', err?.response?.data);
+      const msg = err?.response?.data?.message || err?.message || 'Search request failed';
       setApiResults([]);
       setNotification({ type: 'error', message: msg });
     },
@@ -611,12 +613,13 @@ const FlowSearch = () => {
     if (fanCategory === 'centrifugal') {
       payload.pressureType = pressureClass; // low | medium | high
       const seriesNorm = normalizeSeries(series);
+      console.log('[FlowSearch] Series normalization:', { original: series, normalized: seriesNorm });
 
       if (['NBR-D','NBR_D','NBS-D','NBS_D'].includes(seriesNorm)) {
         payload.configurationType = 'SISW'
         payload.flowRate = Number(payload.flowRate) / 2;
         payload.centrifugalType = (seriesNorm.startsWith('NBR')) ? 'NBR' : 'NBS'
-  console.log('payload',payload);
+        console.log('[FlowSearch] NBR-D/NBS-D payload:', payload);
 
       } else if (['NBRS', 'NC', 'NBXI', 'NP'].includes(seriesNorm)) {
         // Map NBRS, NC, NBXI, NP to NBR with SISW configuration
@@ -715,15 +718,33 @@ const FlowSearch = () => {
     const normFull = normalize(full);
     const normModelNumber = normalize(modelNumber);
 
+    // Extract all numbers from model name for exact matching
+    const allNumbers = full.match(/\d+/g) || [];
+    const exactNumberMatch = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : null; // Use last number (usually the model number)
+
     // Priority order of strategies
     const strategies = [
       (row) => normalize(row.model) === normFull,
       (row) => normalize(row.model) === normModelNumber,
+      // Exact number match - check if row.model contains the exact number as a standalone value
+      (row) => {
+        if (!exactNumberMatch) return false;
+        const rowModelStr = String(row.model || '');
+        // Check for exact number match (not substring)
+        const rowNumbers = rowModelStr.match(/\d+/g) || [];
+        return rowNumbers.some(num => num === exactNumberMatch);
+      },
       (row) => normalize(row.model).includes(normFull) || normFull.includes(normalize(row.model)),
       (row) => normalize(row.model).includes(normModelNumber) || normModelNumber.includes(normalize(row.model)),
       (row) => base && String(row.model || '').includes(base),
       (row) => preMNumber && String(row.model || '').includes(preMNumber),
-      (row) => digitsOnly && String(row.model || '').includes(digitsOnly),
+      // Last resort: check if digitsOnly matches exactly as a number in row.model
+      (row) => {
+        if (!digitsOnly) return false;
+        const rowModelStr = String(row.model || '');
+        const rowNumbers = rowModelStr.match(/\d+/g) || [];
+        return rowNumbers.some(num => num === digitsOnly);
+      },
     ];
 
     for (const test of strategies) {
@@ -1623,8 +1644,8 @@ const FlowSearch = () => {
         let dims = null;
         if (fanCategory === 'axial') {
           dims = dimensionsData[typeKeyForPdf] || getDimensionsData(typeKeyForPdf, selected?.model?.name);
-        } else if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
-          // Use full object with variants for NBR, NBR-D, and NBS-D
+        } else if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBS' || typeKeyForPdf === 'NBRS' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
+          // Use full object with variants for NBR, NBS, NBRS, NBR-D, and NBS-D
           dims = dimensionsData[typeKeyForPdf] || null;
         } else if (typeKeyForPdf) {
           dims = getDimensionsData(typeKeyForPdf, selected?.model?.name);
@@ -2027,7 +2048,7 @@ const FlowSearch = () => {
             || getDimensionsData(typeKeyForPdf, fullModelNameForPdf)
             || (preMNumberPdf ? getDimensionsData(typeKeyForPdf, preMNumberPdf) : null)
             || getDimensionsData(typeKeyForPdf);
-        } else if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
+        } else if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBS' || typeKeyForPdf === 'NBRS' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
           dims = dimensionsData[typeKeyForPdf] || null;
         } else if (typeKeyForPdf) {
           dims = getDimensionsData(typeKeyForPdf, fullModelNameForPdf) || (preMNumberPdf ? getDimensionsData(typeKeyForPdf, preMNumberPdf) : null);
@@ -2046,6 +2067,8 @@ const FlowSearch = () => {
             (
               axialType === 'NEID' ||
               typeKeyForPdf === 'NBR' ||
+              typeKeyForPdf === 'NBS' ||
+              typeKeyForPdf === 'NBRS' ||
               typeKeyForPdf === 'NBR_D' ||
               typeKeyForPdf === 'NBS_D' ||
               typeKeyForPdf === 'NPD' ||
@@ -2167,7 +2190,9 @@ const FlowSearch = () => {
   const getCurrentDimensionsType = () => {
     if (fanCategory === 'axial') return axialType || null;
     if (fanCategory === 'centrifugal') {
-      if (['NBR', 'NBS', 'NBRS'].includes(String(series))) return 'NBR';
+      if (String(series) === 'NBR') return 'NBR';
+      if (String(series) === 'NBS') return 'NBS';
+      if (String(series) === 'NBRS') return 'NBRS';
       if (series === 'NBR-D' || series === 'NBR_D' || series === 'NBR-D FAN SECTION TYPE') return 'NBR_D';
       if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D FAN SECTION TYPE') return 'NBS_D';
       if (String(series) === 'NPD') return 'NPD';
@@ -2180,9 +2205,11 @@ const FlowSearch = () => {
   const getCurrentDimensionsData = () => {
     const typeKey = getCurrentDimensionsType();
     if (!typeKey || !selected?.model?.name) return null;
-    // For types with multiple variants (e.g., NEID, NBR, NBR-D, NBS-D, NPD, NPE, NPF), return the full type with variants
+    // For types with multiple variants (e.g., NEID, NBR, NBS, NBRS, NBR-D, NBS-D, NPD, NPE, NPF), return the full type with variants
     if (
       typeKey === 'NBR' ||
+      typeKey === 'NBS' ||
+      typeKey === 'NBRS' ||
       typeKey === 'NBR_D' ||
       typeKey === 'NBS_D' ||
       typeKey === 'NPD' ||
@@ -2724,12 +2751,14 @@ const FlowSearch = () => {
                         );
                       }
 
-                      // Special handling for types with variants (NEID, NBR, NBR-D, NBS-D, NPD, NPE, NPF)
+                      // Special handling for types with variants (NEID, NBR, NBS, NBRS, NBR-D, NBS-D, NPD, NPE, NPF)
                       const currentType = getCurrentDimensionsType();
                       if (
                         (
                           axialType === 'NEID' ||
                           currentType === 'NBR' ||
+                          currentType === 'NBS' ||
+                          currentType === 'NBRS' ||
                           currentType === 'NBR_D' ||
                           currentType === 'NBS_D' ||
                           currentType === 'NPD' ||
@@ -2764,13 +2793,9 @@ const FlowSearch = () => {
                         return (
                           <div className="space-y-6">
                             {filteredVariants.map((variant, variantIndex) => {
-                              // Use base number token so models like "500 M624" and "500 H627" map to same data
+                              // Use findDimensionsRowMatch for accurate model matching
                               const modelName = selected?.model?.name || '';
-                              const key = getBaseModelNumber(modelName) || modelName.replace(/^[A-Z-]+\s*/, '').trim();
-                              const selectedModelData = variant.data.find(row => {
-                                const rowModel = String(row.model || '');
-                                return rowModel === key || rowModel.includes(key) || modelName.includes(rowModel);
-                              });
+                              const selectedModelData = findDimensionsRowMatch(variant.data || [], modelName);
                               
                               return (
                                 <div key={variantIndex} className="space-y-4">
