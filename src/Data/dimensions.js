@@ -173,7 +173,7 @@ export const dimensionsData = {
         },
         {
           name: "NEID-S",
-          image: "/src/assets/dimensions/NEID_S.jpg",
+          image: "/src/assets/dimensions/NEID_S.png",
           data: [
             { model: "NEID 315", A: "315", B: "400", C: "200", D: "357", E: "12", F: "8", mass: "12" },
             { model: "NEID 400", A: "400", B: "500", C: "250", D: "450", E: "12", F: "8", mass: "10" },

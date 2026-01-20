@@ -246,7 +246,7 @@ const FlowSearch = () => {
     // { code: 'NEI2D', label: 'Axial jet fan (NEI2D)' }, // Hidden temporarily
     { code: 'NEI3D', label: 'Axial box inline (NEI3D)' },
     { code: 'NRT', label: 'Axial roof top (NRT)' },
-    { code: 'NEIDS', label: 'Axial fire rated smoke (NEIDS)' },
+    { code: 'NEIDS', label: 'Axial fire rated smoke (NEIDS) (400°C / 2hrs)' },
     { code: 'NEID', label: 'Axial ducted (NEID)' },
     { code: 'NETD', label: 'Axial wall mounted  (NETD)' },
   ];
@@ -258,9 +258,12 @@ const FlowSearch = () => {
   }));
 
   // Centrifugal catalog (Series gallery) - moved outside conditional rendering for PDF access
+  // Temporarily hide some centrifugal series from UI
+  const hiddenCentrifugalSeries = ['NC', 'NBXI', 'NP'];
+
   const getSeriesOptions = () => {
     if (pressureClass === 'low') {
-      if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP'];
+      if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS'];
       if (lowConfig === 'didw') return ['NBR-D', 'NBS-D', 'NBR-D FAN SECTION TYPE', 'NBS-D FAN SECTION TYPE'];
       return [];
     }
@@ -271,7 +274,19 @@ const FlowSearch = () => {
   
   // Get all possible series for image mapping
   const getAllSeriesOptions = () => {
-    return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP', 'NBR-D', 'NBS-D', 'NBR-D FAN SECTION TYPE', 'NBS-D FAN SECTION TYPE', 'NPD', 'NPE', 'NPF'];
+    return [
+      'NBR',
+      'NBS',
+      'NBRS',
+      'NBR-D',
+      'NBS-D',
+      'NBR-D FAN SECTION TYPE',
+      'NBS-D FAN SECTION TYPE',
+      'NPD',
+      'NPE',
+      'NPF'
+    ].filter(s => !hiddenCentrifugalSeries.includes(s));
+    //return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP', 'NBR-D', 'NBS-D', 'NBR-D FAN SECTION TYPE', 'NBS-D FAN SECTION TYPE', 'NPD', 'NPE', 'NPF'];
   };
   
   const seriesCards = getAllSeriesOptions().map(s => ({
@@ -285,6 +300,13 @@ const FlowSearch = () => {
     name: s,
     img: getCentrifugalImage(s)
   }));
+
+  // If a hidden series is currently selected, clear it
+  useEffect(() => {
+    if (fanCategory === 'centrifugal' && hiddenCentrifugalSeries.includes(series)) {
+      setSeries('');
+    }
+  }, [fanCategory, series]);
 
   // From store we only need diameter for any client-side calc (not used now for API)
   const { diameter } = useSelector((state) => state.flow);
@@ -370,7 +392,10 @@ const FlowSearch = () => {
     }
   };
 
-  const beltHidden = isJetFan;
+  // Hide BELT_DRIVE for specific axial models only
+  const beltHidden =
+    fanCategory === 'axial' &&
+    (isJetFan || ['NEI3D', 'NRT', 'NEIDS', 'NETD'].includes(axialType));
   
   // Check if it's NBR-D FAN SECTION TYPE or NBS-D FAN SECTION TYPE
   const isFanSectionType = series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE';
@@ -382,6 +407,13 @@ const FlowSearch = () => {
         ...(beltHidden ? [] : ['BELT_DRIVE']),
         'DIRECT_DRIVE_WITH_FREQUENCY_DRIVE'
       ];
+
+  // If BELT_DRIVE becomes invalid for selected axial model, fallback to DIRECT_DRIVE
+  useEffect(() => {
+    if (!isFanSectionType && beltHidden && driveType === 'BELT_DRIVE') {
+      setDriveType('DIRECT_DRIVE');
+    }
+  }, [beltHidden, driveType, isFanSectionType]);
 
   // Auto-set driveType to BELT_DRIVE when Fan Section Type is selected
   useEffect(() => {
@@ -2336,7 +2368,7 @@ const FlowSearch = () => {
                     loading="eager"
                     decoding="async"
                   />
-                  <div className="mt-2 text-center text-[#1F3B73] text-sm font-medium">Axial</div>
+                  <div className="mt-2 text-center text-[#1F3B73] font-bold text-sm">Axial</div>
                 </button>
                 <button type="button" onClick={() => { setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setFanCategory('centrifugal'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} className={`border rounded-lg p-3 hover:shadow transition ${fanCategory==='centrifugal' ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
                   <img 
@@ -2346,7 +2378,7 @@ const FlowSearch = () => {
                     loading="eager"
                     decoding="async"
                   />
-                  <div className="mt-2 text-center text-[#1F3B73] text-sm font-medium">Centrifugal</div>
+                  <div className="mt-2 text-center text-[#1F3B73] font-bold text-sm">Centrifugal</div>
                 </button>
               </div>
               {fanCategory === 'centrifugal' && (
@@ -2379,7 +2411,7 @@ const FlowSearch = () => {
 
             {fanCategory === 'axial' && (
               <div>
-                <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Axial Types</label>
+                <label className="block text-[#0F172A] text-base font-bold mb-3">Axial Types</label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {axialTypes.map(t => (
                     <button key={t.id} type="button" onClick={() => { setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); onSelectAxial(t.code); }} className={`border rounded-lg p-2 hover:shadow transition ${axialType===t.code ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
@@ -2390,13 +2422,13 @@ const FlowSearch = () => {
                         loading="lazy"
                         decoding="async"
                       />}
-                      <div className="mt-2 text-xs text-[#1F3B73] text-center">{t.name}</div>
+                      <div className="mt-2 font-bold text-sm text-[#1F3B73] text-center">{t.name}</div>
                     </button>
                   ))}
                 </div>
                 {axialType && (
                   <div className="mt-6 rounded-xl border border-[#E5EDFF] bg-white p-4">
-                    <div className="text-[#1F3B73] text-sm font-semibold mb-3">{`${axialType} - ${axialTypes.find(a=>a.code === axialType)?.name}`}</div>
+                    <div className="text-[#1F3B73] font-bold text-sm mb-3">{`${axialType} - ${axialTypes.find(a=>a.code === axialType)?.name}`}</div>
                     <div className="flex items-center gap-4">
                       {(() => { const sel = axialTypes.find(t => t.code === axialType); return sel?.img ? (
                         <img 
@@ -2427,7 +2459,7 @@ const FlowSearch = () => {
 
             {fanCategory === 'centrifugal' && (
               <div>
-                <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Centrifugal Type</label>
+                <label className="block text-[#0F172A] text-base font-bold mb-3">Centrifugal Type</label>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {currentSeriesCards.map(card => (
@@ -2443,14 +2475,14 @@ const FlowSearch = () => {
                         ) : (
                           <div className="w-full h-20 flex items-center justify-center text-xs text-[#64748B]">{card.name}</div>
                         )}
-                        <div className="mt-2 text-xs text-[#1F3B73] text-center">{card.name}</div>
+                        <div className="mt-2  text-[#1F3B73] text-center font-bold text-sm ">{card.name}</div>
                       </button>
                     ))}
                   </div>
                  
                   {series && (
                     <div className="mt-2 rounded-xl border border-[#E5EDFF] bg-white p-4">
-                      <div className="text-[#1F3B73] text-sm font-semibold mb-3">{`${series} - Centrifugal Type`}</div>
+                      <div className="text-[#1F3B73] font-bold text-sm mb-3">{`${series} - Centrifugal Type`}</div>
                       <div className="flex items-center gap-4">
                         {(() => { const card = currentSeriesCards.find(c => c.code === series); return card?.img ? (
                           <img 
