@@ -261,6 +261,11 @@ const FlowSearch = () => {
   // Temporarily hide some centrifugal series from UI
   const hiddenCentrifugalSeries = ['NC', 'NBXI', 'NP'];
 
+  const getSeriesLabel = (code) => {
+    if (code === 'NBRS') return 'NBRS (400°C / 2hrs)';
+    return code;
+  };
+
   const getSeriesOptions = () => {
     if (pressureClass === 'low') {
       if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS'];
@@ -291,13 +296,13 @@ const FlowSearch = () => {
   
   const seriesCards = getAllSeriesOptions().map(s => ({
     code: s,
-    name: s,
+    name: getSeriesLabel(s),
     img: getCentrifugalImage(s) // expects files like NBR.png, NBS.png, ...
   }));
   
   const currentSeriesCards = getSeriesOptions().map(s => ({
     code: s,
-    name: s,
+    name: getSeriesLabel(s),
     img: getCentrifugalImage(s)
   }));
 
@@ -2358,7 +2363,7 @@ const FlowSearch = () => {
 
           <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Category</label>
+              <label className="block text-[#1F3B73] text-base font-bold mb-2">Category</label>
               <div className="grid grid-cols-2 gap-3">
                 <button type="button" onClick={() => { setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setFanCategory('axial'); setAxialType(''); setDriveType(''); setPressureClass(''); setLowConfig(''); setSeries(''); }} className={`border rounded-lg p-3 hover:shadow transition ${fanCategory==='axial' ? 'ring-2 ring-[#93C5FD] border-[#93C5FD]' : 'border-[#E5EDFF]'}`}>
                   <img 
@@ -2384,7 +2389,7 @@ const FlowSearch = () => {
               {fanCategory === 'centrifugal' && (
                 <div className="mt-4 space-y-3">
                   <div>
-                    <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Select Pressure</label>
+                    <label className="block text-[#1F3B73] text-base font-bold mb-2">Select Pressure</label>
                     <select value={pressureClass} onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setPressureClass(e.target.value); setLowConfig(''); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                       <option value="">Select pressure</option>
                       <option value="low">Low Pressure</option>
@@ -2395,7 +2400,7 @@ const FlowSearch = () => {
                   {pressureClass === 'low' && (
                     <>
                       <div>
-                        <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Select Configuration</label>
+                        <label className="block text-[#1F3B73] text-base font-bold mb-2">Select Configuration</label>
                         <select value={lowConfig} onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setLowConfig(e.target.value); setSeries(''); }} className="w-full px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                           <option value="">Select configuration</option>
                           <option value="sisw">SISW</option>
@@ -2447,7 +2452,7 @@ const FlowSearch = () => {
 
             {fanCategory === 'axial' && axialType && axialType !== 'NEI2D' && (
               <div>
-                <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Drive Type</label>
+                <label className="block text-[#1F3B73] text-base font-bold mb-2">Drive Type</label>
                 <select value={driveType} onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setDriveType(e.target.value); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                   <option value="">Select drive type</option>
                   {driveOptions.map(opt => (
@@ -2482,7 +2487,7 @@ const FlowSearch = () => {
                  
                   {series && (
                     <div className="mt-2 rounded-xl border border-[#E5EDFF] bg-white p-4">
-                      <div className="text-[#1F3B73] font-bold text-sm mb-3">{`${series} - Centrifugal Type`}</div>
+                      <div className="text-[#1F3B73] font-bold text-sm mb-3">{`${getSeriesLabel(series)} - Centrifugal Type`}</div>
                       <div className="flex items-center gap-4">
                         {(() => { const card = currentSeriesCards.find(c => c.code === series); return card?.img ? (
                           <img 
@@ -2501,7 +2506,7 @@ const FlowSearch = () => {
             )}
            {fanCategory === 'centrifugal' && series && (
               <div>
-                <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Drive Type</label>
+                <label className="block text-[#1F3B73] text-base font-bold mb-2">Drive Type</label>
                 <select value={driveType} onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setDriveType(e.target.value); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                   <option value="">Select drive type</option>
                   {driveOptions.map(opt => (
@@ -2516,7 +2521,7 @@ const FlowSearch = () => {
           <form onSubmit={handleSubmit} onFocusCapture={()=>setHasSearched(false)} onChangeCapture={()=>setHasSearched(false)} className="space-y-6 ">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Flow Rate</label>
+                <label className="block text-[#1F3B73] text-base font-bold mb-2">Flow Rate</label>
                 <div className="flex gap-2">
                   <input type="number" step="any" name="flowRate" value={searchData.flowRate} onChange={(e)=>{ searchMutation.reset(); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter flow rate" />
                   <select value={flowUnit} onChange={handleFlowUnitChange} className="px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
@@ -2529,7 +2534,7 @@ const FlowSearch = () => {
               </div>
 
               <div>
-                <label className="block text-[#1F3B73] text-sm font-semibold mb-2">Static Pressure</label>
+                <label className="block text-[#1F3B73] text-base font-bold mb-2">Static Pressure</label>
                 <div className="flex gap-2">
                   <input type="number" step="any" name="staticPressure" value={isJetFan ? '10' : searchData.staticPressure} onChange={(e)=>{ searchMutation.reset(); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} disabled={isJetFan} readOnly={isJetFan} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter static pressure" />
                   <select value={pressureUnit} onChange={handlePressureUnitChange} disabled={isJetFan} className="px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
