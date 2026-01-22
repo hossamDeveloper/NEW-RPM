@@ -246,7 +246,7 @@ const FlowSearch = () => {
     // { code: 'NEI2D', label: 'Axial jet fan (NEI2D)' }, // Hidden temporarily
     { code: 'NEI3D', label: 'Axial box inline (NEI3D)' },
     { code: 'NRT', label: 'Axial roof top (NRT)' },
-    { code: 'NEIDS', label: 'Axial fire rated smoke (NEIDS) (400°C / 2hrs)' },
+    { code: 'NEIDS', label: 'Axial fire rated (NEIDS) (400°C / 2hrs)' },
     { code: 'NEID', label: 'Axial ducted (NEID)' },
     { code: 'NETD', label: 'Axial wall mounted  (NETD)' },
   ];
@@ -262,7 +262,7 @@ const FlowSearch = () => {
   const hiddenCentrifugalSeries = ['NC', 'NBXI', 'NP'];
 
   const getSeriesLabel = (code) => {
-    if (code === 'NBRS') return 'NBRS (400°C / 2hrs)';
+    if (code === 'NBRS') return 'Centrifugal fire rated (NBRS) (400°C / 2hrs)';
     return code;
   };
 
