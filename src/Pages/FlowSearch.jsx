@@ -1680,7 +1680,16 @@ const FlowSearch = () => {
         const typeKeyForPdf = getCurrentDimensionsType();
         let dims = null;
         if (fanCategory === 'axial') {
-          dims = dimensionsData[typeKeyForPdf] || getDimensionsData(typeKeyForPdf, selected?.model?.name);
+          // For NEID: use NEID_DIRECT for DIRECT_DRIVE/DIRECT_DRIVE_WITH_FREQUENCY_DRIVE
+          if (typeKeyForPdf === 'NEID') {
+            if (driveType === 'DIRECT_DRIVE' || driveType === 'DIRECT_DRIVE_WITH_FREQUENCY_DRIVE') {
+              dims = dimensionsData['NEID_DIRECT'] || null;
+            } else {
+              dims = dimensionsData['NEID'] || null;
+            }
+          } else {
+            dims = dimensionsData[typeKeyForPdf] || getDimensionsData(typeKeyForPdf, selected?.model?.name);
+          }
         } else if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBS' || typeKeyForPdf === 'NBRS' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
           // Use full object with variants for NBR, NBS, NBRS, NBR-D, and NBS-D
           dims = dimensionsData[typeKeyForPdf] || null;
@@ -2081,10 +2090,19 @@ const FlowSearch = () => {
         const preMNumberPdf = preMMatchPdf ? preMMatchPdf[1] : (fullModelNameForPdf.match(/(\d+)/)?.[1] || '');
         if (fanCategory === 'axial') {
           // Try multiple fallbacks to ensure we load NEID dimensions structure
-          dims = dimensionsData[typeKeyForPdf]
-            || getDimensionsData(typeKeyForPdf, fullModelNameForPdf)
-            || (preMNumberPdf ? getDimensionsData(typeKeyForPdf, preMNumberPdf) : null)
-            || getDimensionsData(typeKeyForPdf);
+          // For NEID: use NEID_DIRECT for DIRECT_DRIVE/DIRECT_DRIVE_WITH_FREQUENCY_DRIVE
+          if (typeKeyForPdf === 'NEID') {
+            if (driveType === 'DIRECT_DRIVE' || driveType === 'DIRECT_DRIVE_WITH_FREQUENCY_DRIVE') {
+              dims = dimensionsData['NEID_DIRECT'] || null;
+            } else {
+              dims = dimensionsData['NEID'] || null;
+            }
+          } else {
+            dims = dimensionsData[typeKeyForPdf]
+              || getDimensionsData(typeKeyForPdf, fullModelNameForPdf)
+              || (preMNumberPdf ? getDimensionsData(typeKeyForPdf, preMNumberPdf) : null)
+              || getDimensionsData(typeKeyForPdf);
+          }
         } else if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBS' || typeKeyForPdf === 'NBRS' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
           dims = dimensionsData[typeKeyForPdf] || null;
         } else if (typeKeyForPdf) {
@@ -2251,10 +2269,16 @@ const FlowSearch = () => {
       typeKey === 'NBS_D' ||
       typeKey === 'NPD' ||
       typeKey === 'NPE' ||
-      typeKey === 'NPF' ||
-      axialType === 'NEID'
+      typeKey === 'NPF'
     ) {
       return dimensionsData[typeKey] || null;
+    }
+    // For NEID: use NEID_DIRECT for DIRECT_DRIVE/DIRECT_DRIVE_WITH_FREQUENCY_DRIVE, otherwise NEID (BELT_DRIVE)
+    if (axialType === 'NEID') {
+      if (driveType === 'DIRECT_DRIVE' || driveType === 'DIRECT_DRIVE_WITH_FREQUENCY_DRIVE') {
+        return dimensionsData['NEID_DIRECT'] || null;
+      }
+      return dimensionsData['NEID'] || null;
     }
     return getDimensionsData(typeKey, selected.model.name);
   };
