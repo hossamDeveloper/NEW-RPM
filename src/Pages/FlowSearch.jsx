@@ -43,6 +43,7 @@ const FlowSearch = () => {
   const [fanCategory, setFanCategory] = useState('');
   const [axialType, setAxialType] = useState(''); // store enum code like NEID, NEI2D
   const [driveType, setDriveType] = useState('');
+  const [lpaDistance, setLpaDistance] = useState('');
   const [error, setError] = useState('');
   const [notification, setNotification] = useState(null); // {type,message}
   useEffect(() => {
@@ -388,6 +389,12 @@ const FlowSearch = () => {
   };
 
   const isJetFan = axialType === 'NEI2D';
+  const lpaValue = parseFloat(lpaDistance);
+  const isLpaValid = Number.isFinite(lpaValue) && lpaValue >= 1.5 && lpaValue <= 20;
+  const shouldApplyLpaCorrection =
+    (fanCategory === 'axial' && axialType && axialType !== 'NEI2D') ||
+    (fanCategory === 'centrifugal' && !!series);
+
   const onSelectAxial = (code) => {
     setHasSearched(false);
     setAxialType(code);
@@ -490,15 +497,37 @@ const FlowSearch = () => {
 
             const newClosestPoint = {
               ...cp,
-            flowRate: Number.isFinite(flow) ? flow * flowFactor : cp.flowRate,
-            dynamicPressure: Number.isFinite(dynP) ? dynP * dynamicPressureFactor : cp.dynamicPressure,
-            totalPressure: (Number.isFinite(dynP) ? dynP * dynamicPressureFactor : Number(cp.dynamicPressure) || 0) + (Number.isFinite(statP) ? statP : Number(cp.staticPressure) || 0),
+              flowRate: Number.isFinite(flow) ? flow * flowFactor : cp.flowRate,
+              dynamicPressure: Number.isFinite(dynP) ? dynP * dynamicPressureFactor : cp.dynamicPressure,
+              totalPressure: (Number.isFinite(dynP) ? dynP * dynamicPressureFactor : Number(cp.dynamicPressure) || 0) + (Number.isFinite(statP) ? statP : Number(cp.staticPressure) || 0),
               efficiency: Number.isFinite(eff) ? Math.min(100, eff * efficiencyFactor) : cp.efficiency,
               brakePower: Number.isFinite(bp) ? bp * brakePowerFactor : cp.brakePower,
               lpa: Number.isFinite(lpa) ? lpa + lpaAdd : cp.lpa,
             };
 
             return { ...r, rpm: newRpm, closestPoint: newClosestPoint };
+          });
+        }
+
+        if (shouldApplyLpaCorrection && isLpaValid) {
+          const referenceDistance = 1.5;
+          const ratio = lpaValue / referenceDistance;
+          const delta = ratio > 0 ? 20 * Math.log10(ratio) : 0;
+
+          results = results.map((r) => {
+            const cp = r?.closestPoint || {};
+            const oldLpa = Number(cp.lpa);
+            const newLpa = Number.isFinite(oldLpa) && ratio > 0
+              ? oldLpa - delta
+              : cp.lpa;
+
+            return {
+              ...r,
+              closestPoint: {
+                ...cp,
+                lpa: newLpa,
+              },
+            };
           });
         }
         setApiResults(results);
@@ -619,7 +648,8 @@ const FlowSearch = () => {
     (
       (fanCategory === 'axial' && axialType !== '' && driveType !== '') ||
       (fanCategory === 'centrifugal' && pressureClass !== '' && (pressureClass !== 'low' || lowConfig !== '') && series !== '' && driveType !== '')
-    )
+    ) &&
+    (!shouldApplyLpaCorrection || isLpaValid)
   );
 
   const handleSubmit = (e) => {
@@ -630,7 +660,11 @@ const FlowSearch = () => {
     setHasSearched(true);
 
     if (!isFormComplete) {
-      setError('Please complete all required fields.');
+      if (shouldApplyLpaCorrection && !isLpaValid) {
+        setError('Please enter LPA value between 1.5 and 20.');
+      } else {
+        setError('Please complete all required fields.');
+      }
       return;
     }
 
@@ -2475,14 +2509,36 @@ const FlowSearch = () => {
             )}
 
             {fanCategory === 'axial' && axialType && axialType !== 'NEI2D' && (
-              <div>
-                <label className="block text-[#1F3B73] text-base font-bold mb-2">Drive Type</label>
-                <select value={driveType} onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setDriveType(e.target.value); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
-                  <option value="">Select drive type</option>
-                  {driveOptions.map(opt => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[#1F3B73] text-base font-bold mb-2">Drive Type</label>
+                  <select
+                    value={driveType}
+                    onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setDriveType(e.target.value); }}
+                    className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none"
+                  >
+                    <option value="">Select drive type</option>
+                    {driveOptions.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[#1F3B73] text-base font-bold mb-2">Sound Level (LPA) Distance</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="1.5"
+                    max="20"
+                    value={lpaDistance}
+                    onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setLpaDistance(e.target.value); }}
+                    className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all"
+                    placeholder="Enter LPA value"
+                  />
+                  {!isLpaValid && lpaDistance !== '' && (
+                    <p className="mt-1 text-sm text-red-500">Value must be between 1.5 and 20.</p>
+                  )}
+                </div>
               </div>
             )}
 
@@ -2528,15 +2584,37 @@ const FlowSearch = () => {
                 </div>
               </div>
             )}
-           {fanCategory === 'centrifugal' && series && (
-              <div>
-                <label className="block text-[#1F3B73] text-base font-bold mb-2">Drive Type</label>
-                <select value={driveType} onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setDriveType(e.target.value); }} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
-                  <option value="">Select drive type</option>
-                  {driveOptions.map(opt => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
+            {fanCategory === 'centrifugal' && series && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[#1F3B73] text-base font-bold mb-2">Drive Type</label>
+                  <select
+                    value={driveType}
+                    onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setDriveType(e.target.value); }}
+                    className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none"
+                  >
+                    <option value="">Select drive type</option>
+                    {driveOptions.map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[#1F3B73] text-base font-bold mb-2">LPA Distance (1.5 - 20)</label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="1.5"
+                    max="20"
+                    value={lpaDistance}
+                    onChange={(e)=>{ setHasSearched(false); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); setLpaDistance(e.target.value); }}
+                    className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all"
+                    placeholder="Enter LPA value"
+                  />
+                  {!isLpaValid && lpaDistance !== '' && (
+                    <p className="mt-1 text-sm text-red-500">Value must be between 1.5 and 20.</p>
+                  )}
+                </div>
               </div>
             )}
           </div>
