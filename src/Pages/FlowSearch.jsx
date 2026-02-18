@@ -21,6 +21,7 @@ import { useMutation } from '@tanstack/react-query';
 import api from '../redux/api';
 import logoImg from '../assets/logo.png';
 import { dimensionsData, getDimensionsData, getModelDimensions } from "../Data/dimensions.js";
+import { getDescription } from "../Data/descriptions.js";
 
 // Register ChartJS components
 ChartJS.register(
@@ -59,7 +60,7 @@ const FlowSearch = () => {
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfCharts, setPdfCharts] = useState({ pressure: false, power: true, efficiency: false });
   const [pdfPressureChartType, setPdfPressureChartType] = useState('total'); // 'total' | 'static'
-  const [activeTab, setActiveTab] = useState('configuration'); // 'configuration' | 'dimensions'
+  const [activeTab, setActiveTab] = useState('configuration'); // 'configuration' | 'dimensions' | 'description'
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [pdfError, setPdfError] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
@@ -250,6 +251,8 @@ const FlowSearch = () => {
     { code: 'NEIDS', label: 'Axial fire rated (NEIDS) (400°C / 2hrs)' },
     { code: 'NEID', label: 'Axial ducted (NEID)' },
     { code: 'NETD', label: 'Axial wall mounted  (NETD)' },
+    // New axial type: Range fan (shares NEIDS backend type, but different model range)
+    { code: 'HIGH_RANGE', label: 'High range axial fans' },
   ];
   const axialTypes = axialCatalog.map(item => ({
     id: `AX_${item.code}`,
@@ -389,8 +392,24 @@ const FlowSearch = () => {
   };
 
   const isJetFan = axialType === 'NEI2D';
-  const lpaValue = parseFloat(lpaDistance);
-  const isLpaValid = Number.isFinite(lpaValue) && lpaValue >= 1.5 && lpaValue <= 20;
+
+  // Map special axial types to the effective backend type (for API payloads, dimensions, etc.)
+  const getEffectiveAxialType = () => {
+    if (axialType === 'HIGH_RANGE') return 'NEIDS';
+    return axialType;
+  };
+
+  // LPA distance handling:
+  // - Optional field
+  // - If empty, use default 1.5 m (no correction applied)
+  const rawLpaValue = parseFloat(lpaDistance);
+  const isLpaProvided = lpaDistance !== '';
+  const isLpaValid =
+    !isLpaProvided ||
+    (Number.isFinite(rawLpaValue) && rawLpaValue >= 1.5 && rawLpaValue <= 20);
+  const effectiveLpaDistance = isLpaProvided && Number.isFinite(rawLpaValue)
+    ? rawLpaValue
+    : 1.5;
   const shouldApplyLpaCorrection =
     (fanCategory === 'axial' && axialType && axialType !== 'NEI2D') ||
     (fanCategory === 'centrifugal' && !!series);
@@ -511,7 +530,7 @@ const FlowSearch = () => {
 
         if (shouldApplyLpaCorrection && isLpaValid) {
           const referenceDistance = 1.5;
-          const ratio = lpaValue / referenceDistance;
+          const ratio = effectiveLpaDistance / referenceDistance;
           const delta = ratio > 0 ? 20 * Math.log10(ratio) : 0;
 
           results = results.map((r) => {
@@ -661,7 +680,7 @@ const FlowSearch = () => {
 
     if (!isFormComplete) {
       if (shouldApplyLpaCorrection && !isLpaValid) {
-        setError('Please enter LPA value between 1.5 and 20.');
+        setError('Please enter LPA distance between 1.5 and 20 meters (or leave it empty to use 1.5 m).');
       } else {
         setError('Please complete all required fields.');
       }
@@ -677,7 +696,8 @@ const FlowSearch = () => {
     };
 
     if (fanCategory === 'axial') {
-      payload.axialType = axialType; // enum code (NEID, NEI2D, ...)
+      // Use effective axial type so that special UI-only types (like NEIDS_RANGE) map to real backend enums
+      payload.axialType = getEffectiveAxialType(); // enum code (NEID, NEI2D, NEIDS, ...)
       payload.axialOption = mapDriveToCode(driveType);
     }
 
@@ -769,6 +789,35 @@ const FlowSearch = () => {
     // Fallback: any digits
     m = s.match(/(\d+)/);
     return m ? m[1] : '';
+  };
+
+  // Apply model range filters for specific axial types (NEIDS/NEID <= 2240, Range fan > 2240)
+  const filterResultsByAxialModelRange = (results) => {
+    if (!Array.isArray(results)) return [];
+    if (fanCategory !== 'axial' || !axialType) return results;
+
+    const shouldFilter =
+      axialType === 'NEIDS' ||
+      axialType === 'NEID' ||
+      axialType === 'HIGH_RANGE';
+    if (!shouldFilter) return results;
+
+    return results.filter((r) => {
+      const modelName = r?.model?.name || '';
+      const modelNumberStr = getBaseModelNumber(modelName);
+      const modelNumber = Number(modelNumberStr);
+
+      // If we can't parse a model number, drop it from these restricted views
+      if (!modelNumber) return false;
+
+      if (axialType === 'NEIDS' || axialType === 'NEID') {
+        return modelNumber <= 2240;
+      }
+      if (axialType === 'HIGH_RANGE') {
+        return modelNumber > 2240; // do NOT show 2240
+      }
+      return true;
+    });
   };
 
   // Robust matcher to find the dimensions row for a given model name across naming variations
@@ -1017,7 +1066,7 @@ const FlowSearch = () => {
       ...baseChartOptions,
       plugins: {
         ...baseChartOptions.plugins,
-        title: { ...baseChartOptions.plugins.title, text: `Flow Rate vs Brake Power (${getFlowUnitLabel()})` },
+        title: { ...baseChartOptions.plugins.title, text: `Flow Rate vs Brake Power (${getFlowUnitLabel()} / KW) ` },
         tooltip: { ...baseChartOptions.plugins.tooltip, callbacks: { label: (ctx) => { const p = ctx.raw; return [`Flow Rate: ${p.x?.toFixed?.(4)} ${getFlowUnitLabel()}`, `${ctx.dataset.label}: ${p.y?.toFixed?.(4)}`]; } } },
         ...annotations
       },
@@ -1659,7 +1708,30 @@ const FlowSearch = () => {
         const productType = fanCategory === 'axial' ? axialType : series;
         doc.text(`Image not available for ${productType}`, pageWidth - 200, infoStartY + 20);
       }
-      y += 8;
+      y += 40;
+
+      // Description
+      const description = getDescription(fanCategory, axialType, series);
+      if (description) {
+        doc.setFontSize(13);
+        doc.setTextColor('#1e3a8a');
+        doc.text('Description', 40, y);
+        y += 25;
+        doc.setFontSize(13);
+        doc.setTextColor('#334155');
+        
+        // Split description into lines and wrap text
+        const splitText = doc.splitTextToSize(description, pageWidth - 80);
+        splitText.forEach((line) => {
+          if (y > pageHeight - 40) {
+            doc.addPage();
+            y = 40;
+          }
+          doc.text(line, 40, y);
+          y += 16;
+        });
+        y += 40;
+      }
 
       // Working Point
       if (closestPoint) {
@@ -1678,6 +1750,7 @@ const FlowSearch = () => {
           ['Brake Power', `${Number(closestPoint.brakePower).toFixed(6)} kw`],
           // ['Installed', `${(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw`],
           ['Sound Level (LPA)', `${(Number(closestPoint.lpa)).toFixed(6)} db`],
+         
         ];
         const marginX = 40;
         const gap = 24;
@@ -2143,7 +2216,12 @@ const FlowSearch = () => {
           dims = getDimensionsData(typeKeyForPdf, fullModelNameForPdf) || (preMNumberPdf ? getDimensionsData(typeKeyForPdf, preMNumberPdf) : null);
         }
         if (dims) {
-          if (y + 300 > pageHeight - 40) {
+          // For centrifugal dimensions in Technical Submittal, always start on a fresh page
+          // so that "Dimensions" / "Dimensions Data" appear at the top, not mid‑page.
+          if (fanCategory === 'centrifugal' ) {
+            doc.addPage();
+            y = 40;
+          } else if (y + 300 > pageHeight - 40) {
             doc.addPage();
             y = 40;
           }
@@ -2277,7 +2355,11 @@ const FlowSearch = () => {
   };
 
   const getCurrentDimensionsType = () => {
-    if (fanCategory === 'axial') return axialType || null;
+    if (fanCategory === 'axial') {
+      // Map special UI-only axial types to real dimension keys
+      if (axialType === 'HIGH_RANGE') return 'NEIDS';
+      return axialType || null;
+    }
     if (fanCategory === 'centrifugal') {
       if (String(series) === 'NBR') return 'NBR';
       if (String(series) === 'NBS') return 'NBS';
@@ -2524,7 +2606,7 @@ const FlowSearch = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[#1F3B73] text-base font-bold mb-2">Sound Level (LPA) Distance</label>
+                  <label className="block text-[#1F3B73] text-base font-bold mb-2">Sound Level (LPA) Distance (meters)</label>
                   <input
                     type="number"
                     step="any"
@@ -2600,7 +2682,7 @@ const FlowSearch = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[#1F3B73] text-base font-bold mb-2">LPA Distance (1.5 - 20)</label>
+                  <label className="block text-[#1F3B73] text-base font-bold mb-2">Sound Level (LPA) Distance (meters)</label>
                   <input
                     type="number"
                     step="any"
@@ -2665,49 +2747,87 @@ const FlowSearch = () => {
 
         {error && (<div className="text-center text-red-600">{error}</div>)}
 
-        {apiResults.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className="space-y-8">
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-              <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Results</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {apiResults.map((r, idx) => {
-                  const rpmId = r?.rpm?._id;
-                  const isLoading = loadingPoints[rpmId];
-                  const hasPoints = modelPoints[rpmId]?.length > 0;
-                  
-                  return (
-                    <button 
-                      key={idx} 
-                      onClick={() => handleModelSelect(idx)} 
-                      className={`text-left p-3 rounded border transition-all ${selectedIndex===idx ? 'border-[#93C5FD] ring-2 ring-[#93C5FD]' : 'border-[#E5EDFF]'}`}
-                    >
-                      <div className="text-[#1E3A8A] font-medium">Model: {axialType || series} - {r.model?.name}</div>
-                      <div className="text-[#334155] text-sm">RPM: {r.rpm?.rpm}</div>
-                      <div className="flex items-center gap-2 mt-2">
-                        {isLoading ? (
-                          <div className="flex items-center gap-1 text-xs text-[#64748B]">
-                            <span className="w-3 h-3 border-2 border-[#93C5FD] border-t-transparent rounded-full animate-spin"></span>
-                            Loading curve...
-                          </div>
-                        ) : hasPoints ? (
-                          <div className="text-xs text-green-600 flex items-center gap-1">
-                            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                            Curve loaded
-                          </div>
-                        ) : selectedIndex === idx ? (
-                          <div className="text-xs text-[#64748B]">Click to load curve</div>
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+        {apiResults.length > 0 && (() => {
+          const filteredResults = filterResultsByAxialModelRange(apiResults);
 
-            {closestPoint && (
+          // Show message if no results after filtering
+          if (filteredResults.length === 0) {
+            let message = '';
+            if (fanCategory === 'axial' && axialType === 'NEIDS') {
+              message = 'No results.';
+            } else if (fanCategory === 'axial' && axialType === 'NEID') {
+              message = 'No results.';
+            } else if (fanCategory === 'axial' && axialType === 'HIGH_RANGE') {
+              message = 'No results.';
+            } else {
+              message = 'No results match the current search input';
+            }
+
+            return (
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}>
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF] text-center">
+                  <div className="text-[#64748B] text-lg mb-2">No results found</div>
+                  <div className="text-[#9CA3AF] text-sm">{message}</div>
+                </div>
+              </motion.div>
+            );
+          }
+
+          return (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className="space-y-8">
+              <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
+                <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Results</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {filteredResults.map((r, idx) => {
+                    // Find original index in apiResults for proper selection handling
+                    const originalIdx = apiResults.findIndex(orig => orig === r);
+                    const rpmId = r?.rpm?._id;
+                    const isLoading = loadingPoints[rpmId];
+                    const hasPoints = modelPoints[rpmId]?.length > 0;
+                    
+                    return (
+                      <button 
+                        key={originalIdx} 
+                        onClick={() => handleModelSelect(originalIdx)} 
+                        className={`text-left p-3 rounded border transition-all ${selectedIndex===originalIdx ? 'border-[#93C5FD] ring-2 ring-[#93C5FD]' : 'border-[#E5EDFF]'}`}
+                      >
+                        <div className="text-[#1E3A8A] font-medium">Model: {axialType || series} - {r.model?.name}</div>
+                        <div className="text-[#334155] text-sm">RPM: {r.rpm?.rpm}</div>
+                        <div className="flex items-center gap-2 mt-2">
+                          {isLoading ? (
+                            <div className="flex items-center gap-1 text-xs text-[#64748B]">
+                              <span className="w-3 h-3 border-2 border-[#93C5FD] border-t-transparent rounded-full animate-spin"></span>
+                              Loading curve...
+                            </div>
+                          ) : hasPoints ? (
+                            <div className="text-xs text-green-600 flex items-center gap-1">
+                              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                              Curve loaded
+                            </div>
+                          ) : selectedIndex === originalIdx ? (
+                            <div className="text-xs text-[#64748B]">Click to load curve</div>
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {closestPoint && filteredResults.includes(apiResults[selectedIndex]) && (
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
                 {/* Tab Navigation */}
                 <div className="flex border-b border-[#E5EDFF] mb-6">
+                <button
+                    onClick={() => setActiveTab('description')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === 'description'
+                        ? 'border-[#1E3A8A] text-[#1E3A8A]'
+                        : 'border-transparent text-[#64748B] hover:text-[#1E3A8A]'
+                    }`}
+                  >
+                    Description
+                  </button>
                   <button
                     onClick={() => setActiveTab('configuration')}
                     className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -2728,6 +2848,7 @@ const FlowSearch = () => {
                   >
                     Dimensions
                   </button>
+                 
                 </div>
 
                 {/* Tab Content */}
@@ -2748,7 +2869,15 @@ const FlowSearch = () => {
                             <tr><td className="py-2 px-4">Efficiency</td><td className="py-2 px-4">{Number(closestPoint.efficiency).toFixed(6)} %</td></tr>
                             <tr><td className="py-2 px-4">Brake Power</td><td className="py-2 px-4">{Number(closestPoint.brakePower).toFixed(6)} kw</td></tr>
                             {/* <tr><td className="py-2 px-4">Installed</td><td className="py-2 px-4">{(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw</td></tr> */}
-                            <tr><td className="py-2 px-4">Sound Level (LPA)</td><td className="py-2 px-4">{Number(closestPoint.lpa).toFixed(6)} db</td></tr>
+                            <tr>
+                              <td className="py-2 px-4">Sound Level (LPA)     <span className="text-xs text-[#64748B] ml-2">
+                                  (@ {effectiveLpaDistance} m)
+                                </span></td>
+                              <td className="py-2 px-4">
+                                {Number(closestPoint.lpa).toFixed(6)} db
+                               
+                              </td>
+                            </tr>
                         <tr><td className="py-2 px-4">Dynamic Pressure</td><td className="py-2 px-4">{Number(convertChartPressureValue(Number(closestPoint.dynamicPressure))).toFixed(6)} {getPressureUnitLabel()}</td></tr>
                         {userRole === "admin" && (
                           <>
@@ -3103,14 +3232,40 @@ const FlowSearch = () => {
                     )}
                   </div>
                 )}
+
+                {activeTab === 'description' && (
+                  <div className="space-y-6">
+                    {(() => {
+                      const description = getDescription(fanCategory, axialType, series);
+                      if (!description) {
+                        return (
+                          <div className="text-center py-12">
+                            <div className="text-[#64748B] text-lg mb-4">Model Description</div>
+                            <div className="text-[#9CA3AF] text-sm">Select a model to view description</div>
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
+                          <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Description</h3>
+                          <div className="text-[#334155] text-base leading-relaxed whitespace-pre-line">
+                            {description}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
             )}
-          </motion.div>
-        )}
+            </motion.div>
+          );
+        })()}
         {hasSearched && !searchMutation.isPending && apiResults.length === 0 && (
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF] text-center">
-            <div className="text-[#64748B] text-lg mb-2">لا توجد نتائج</div>
-            <div className="text-[#9CA3AF] text-sm">لا توجد نتائج مطابقة لمدخلات البحث الحالية</div>
+            <div className="text-[#64748B] text-lg mb-2">No results found  </div>
+            <div className="text-[#9CA3AF] text-sm">No results matched the current search inputs.</div>
           </div>
         )}
         {axialType === 'NEI2D' ? (
@@ -3120,77 +3275,85 @@ const FlowSearch = () => {
             </a>
           </div>
         ) : (
-          apiResults.length > 0 && (
-            <div className="flex justify-center">
-              <button type="button" onClick={()=>setShowPdfModal(true)} className="mt-2 px-6 py-3 rounded-xl shadow bg-[#1E3A8A] text-white hover:bg-[#1F3B73]">
-                Generate Technical Submittal
-              </button>
-            </div>
-          )
-        )}
-        {showPdfModal && axialType !== 'NEI2D' && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/50" onClick={()=>setShowPdfModal(false)} />
-            <div className="relative bg-white rounded-xl border border-[#E5EDFF] p-6 w-full max-w-md mx-4">
-              <h3 className="text-lg font-semibold text-[#1E3A8A] mb-4">Generate Technical Submittal</h3>
-              <div className="space-y-3 text-[#334155]">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={pdfCharts.pressure} onChange={(e)=>setPdfCharts(prev=>({...prev, pressure: e.target.checked}))} />
-                  <span>Include Pressure Chart</span>
-                </label>
-                {pdfCharts.pressure && (
-                  <div className="ml-6 space-y-2">
-                    <div className="text-sm font-medium text-[#475569]">Pressure Chart Type:</div>
-                    <div className="flex gap-4">
-                      <label className="flex items-center gap-2">
-                        <input 
-                          type="radio" 
-                          name="pdfPressureType" 
-                          value="total" 
-                          checked={pdfPressureChartType === 'total'} 
-                          onChange={(e)=>setPdfPressureChartType(e.target.value)} 
-                        />
-                        <span>Total Pressure</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input 
-                          type="radio" 
-                          name="pdfPressureType" 
-                          value="static" 
-                          checked={pdfPressureChartType === 'static'} 
-                          onChange={(e)=>setPdfPressureChartType(e.target.value)} 
-                        />
-                        <span>Static Pressure</span>
-                      </label>
-                    </div>
-                  </div>
-                )}
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={pdfCharts.power} onChange={(e)=>setPdfCharts(prev=>({...prev, power: e.target.checked}))} />
-                  <span>Include Power Chart</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={pdfCharts.efficiency} onChange={(e)=>setPdfCharts(prev=>({...prev, efficiency: e.target.checked}))} />
-                  <span>Include Efficiency Chart</span>
-                </label>
-                {pdfError && (
-                  <div className="mt-2 p-2 rounded border border-rose-200 bg-rose-50 text-rose-700 text-sm">{pdfError}</div>
-                )}
-              </div>
-              <div className="mt-6 flex justify-end gap-3">
-                <button type="button" onClick={()=>{ if(!isGeneratingPdf) setShowPdfModal(false); }} className="px-4 py-2 rounded-lg border border-[#E5EDFF] text-[#475569] disabled:opacity-50" disabled={isGeneratingPdf}>Cancel</button>
-                <button type="button" onClick={handleGeneratePdf} disabled={isGeneratingPdf} className={`px-4 py-2 rounded-lg text-white ${isGeneratingPdf ? 'bg-[#93C5FD] cursor-not-allowed' : 'bg-[#1E3A8A] hover:bg-[#1F3B73]'}`}>
-                  {isGeneratingPdf ? (
-                    <span className="inline-flex items-center gap-2">
-                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                      Generating...
-                    </span>
-                  ) : 'Generate'}
+          (() => {
+            const filteredResults = filterResultsByAxialModelRange(apiResults);
+            if (filteredResults.length === 0) return null;
+            return (
+              <div className="flex justify-center">
+                <button type="button" onClick={()=>setShowPdfModal(true)} className="mt-2 px-6 py-3 rounded-xl shadow bg-[#1E3A8A] text-white hover:bg-[#1F3B73]">
+                  Generate Technical Submittal
                 </button>
               </div>
-            </div>
-          </div>
+            );
+          })()
         )}
+        {showPdfModal && axialType !== 'NEI2D' && (() => {
+          const filteredResults = filterResultsByAxialModelRange(apiResults);
+          if (filteredResults.length === 0) return null;
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+              <div className="absolute inset-0 bg-black/50" onClick={()=>setShowPdfModal(false)} />
+              <div className="relative bg-white rounded-xl border border-[#E5EDFF] p-6 w-full max-w-md mx-4">
+                <h3 className="text-lg font-semibold text-[#1E3A8A] mb-4">Generate Technical Submittal</h3>
+                <div className="space-y-3 text-[#334155]">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={pdfCharts.pressure} onChange={(e)=>setPdfCharts(prev=>({...prev, pressure: e.target.checked}))} />
+                    <span>Include Pressure Chart</span>
+                  </label>
+                  {pdfCharts.pressure && (
+                    <div className="ml-6 space-y-2">
+                      <div className="text-sm font-medium text-[#475569]">Pressure Chart Type:</div>
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-2">
+                          <input 
+                            type="radio" 
+                            name="pdfPressureType" 
+                            value="total" 
+                            checked={pdfPressureChartType === 'total'} 
+                            onChange={(e)=>setPdfPressureChartType(e.target.value)} 
+                          />
+                          <span>Total Pressure</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input 
+                            type="radio" 
+                            name="pdfPressureType" 
+                            value="static" 
+                            checked={pdfPressureChartType === 'static'} 
+                            onChange={(e)=>setPdfPressureChartType(e.target.value)} 
+                          />
+                          <span>Static Pressure</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={pdfCharts.power} onChange={(e)=>setPdfCharts(prev=>({...prev, power: e.target.checked}))} />
+                    <span>Include Power Chart</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={pdfCharts.efficiency} onChange={(e)=>setPdfCharts(prev=>({...prev, efficiency: e.target.checked}))} />
+                    <span>Include Efficiency Chart</span>
+                  </label>
+                  {pdfError && (
+                    <div className="mt-2 p-2 rounded border border-rose-200 bg-rose-50 text-rose-700 text-sm">{pdfError}</div>
+                  )}
+                </div>
+                <div className="mt-6 flex justify-end gap-3">
+                  <button type="button" onClick={()=>{ if(!isGeneratingPdf) setShowPdfModal(false); }} className="px-4 py-2 rounded-lg border border-[#E5EDFF] text-[#475569] disabled:opacity-50" disabled={isGeneratingPdf}>Cancel</button>
+                  <button type="button" onClick={handleGeneratePdf} disabled={isGeneratingPdf} className={`px-4 py-2 rounded-lg text-white ${isGeneratingPdf ? 'bg-[#93C5FD] cursor-not-allowed' : 'bg-[#1E3A8A] hover:bg-[#1F3B73]'}`}>
+                    {isGeneratingPdf ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        Generating...
+                      </span>
+                    ) : 'Generate'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

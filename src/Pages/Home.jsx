@@ -64,10 +64,9 @@ const Home = () => {
         >
           <span className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-[#FDBA74]"></span>
           <div className="flex flex-col items-center justify-center flex-grow">
-            <h2 className="text-2xl font-bold text-[#1E3A8A] mb-2">Flow Search</h2>
+            <h2 className="text-2xl font-bold text-[#1E3A8A] mb-2">Start Your Selection</h2>
             <p className="text-[#475569] mb-6 text-center">
-              Search and view existing flow calculations with powerful filters
-              and analytics.
+            Find the perfect product tailored to your needs, carefully selected based on your specific requirements.
             </p>
           </div>
           <Link
