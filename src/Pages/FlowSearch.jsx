@@ -3136,16 +3136,20 @@ const FlowSearch = () => {
                           })()
                         : null;
 
+                      const dimensionsDisplayName = axialType === 'NETD_FR'
+                        ? 'Axial wall mounted (Fire Rated) (NETD) (400°C / 2hrs)'
+                        : dimensionsData.name;
+
                       return (
                         <div className="space-y-6">
                           {/* Model Image */}
                           {dimensionsData.image && (
                             <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                              <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">{dimensionsData.name}</h3>
+                              <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">{dimensionsDisplayName}</h3>
                               <div className="flex justify-center">
                                 <ProgressiveImage 
                                   src={resolveUiImage(dimensionsData.image)} 
-                                  alt={dimensionsData.name}
+                                  alt={dimensionsDisplayName}
                                   className="max-w-full h-auto max-h-96 object-contain"
                                   loading="lazy"
                                   decoding="async"
