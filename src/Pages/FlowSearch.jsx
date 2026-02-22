@@ -251,6 +251,7 @@ const FlowSearch = () => {
     { code: 'NEIDS', label: 'Axial fire rated (NEIDS) (400°C / 2hrs)' },
     { code: 'NEID', label: 'Axial ducted (NEID)' },
     { code: 'NETD', label: 'Axial wall mounted  (NETD)' },
+    { code: 'NETD_FR', label: 'Axial wall mounted (Fire Rated) (NETD_FR) (400°C / 2hrs)' },
     // New axial type: Range fan (shares NEIDS backend type, but different model range)
     { code: 'HIGH_RANGE', label: 'High range axial fans' },
   ];
@@ -258,7 +259,7 @@ const FlowSearch = () => {
     id: `AX_${item.code}`,
     code: item.code,
     name: item.label,
-    img: getImageUrl(item.code) || getImageUrl(item.label)
+    img: getImageUrl(item.imageKey || item.code) || getImageUrl(item.label)
   }));
 
   // Centrifugal catalog (Series gallery) - moved outside conditional rendering for PDF access
@@ -396,6 +397,7 @@ const FlowSearch = () => {
   // Map special axial types to the effective backend type (for API payloads, dimensions, etc.)
   const getEffectiveAxialType = () => {
     if (axialType === 'HIGH_RANGE') return 'NEIDS';
+    if (axialType === 'NETD_FR') return 'NETD';
     return axialType;
   };
 
@@ -426,7 +428,7 @@ const FlowSearch = () => {
   // Hide BELT_DRIVE for specific axial models only
   const beltHidden =
     fanCategory === 'axial' &&
-    (isJetFan || ['NEI3D', 'NRT', 'NEIDS', 'NETD'].includes(axialType));
+    (isJetFan || ['NEI3D', 'NRT', 'NEIDS', 'NETD', 'NETD_FR'].includes(axialType));
   
   // Check if it's NBR-D FAN SECTION TYPE or NBS-D FAN SECTION TYPE
   const isFanSectionType = series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE';
@@ -2358,6 +2360,7 @@ const FlowSearch = () => {
     if (fanCategory === 'axial') {
       // Map special UI-only axial types to real dimension keys
       if (axialType === 'HIGH_RANGE') return 'NEIDS';
+      if (axialType === 'NETD_FR') return 'NETD';
       return axialType || null;
     }
     if (fanCategory === 'centrifugal') {

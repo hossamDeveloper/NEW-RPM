@@ -12,6 +12,8 @@ export const descriptionsData = {
   
   NETD: "The Axial Wall Mounted Fan (NETD) is designed for direct wall installation to provide efficient air extraction and ventilation. It features a heavy-duty steel frame and high-performance axial impeller for reliable airflow and long service life.\nIdeal for factories, warehouses, and commercial spaces requiring effective and continuous ventilation.",
   
+  NETD_FR: "The Axial Wall Mounted Fan (Fire Rated) (NETD_FR) is designed for direct wall installation to provide efficient air extraction and ventilation. It features a heavy-duty steel frame and high-performance axial impeller for reliable airflow and long service life.\nIdeal for factories, warehouses, and commercial spaces requiring effective and continuous ventilation.",
+  
   // Centrifugal Fans
   NBR: "The NBR Series Centrifugal Fan is designed for high-efficiency air handling and industrial ventilation. Featuring a backward curved impeller and heavy-duty steel construction, it delivers powerful, reliable airflow with low noise and minimal maintenance.\nIdeal for factories, warehouses, HVAC systems, and large commercial spaces requiring continuous and high-volume ventilation.",
   
