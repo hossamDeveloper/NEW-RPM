@@ -253,7 +253,7 @@ const FlowSearch = () => {
     { code: 'NETD', label: 'Axial wall mounted  (NETD)' },
     { code: 'NETD_FR', label: 'Axial wall mounted (Fire Rated) (NETD_FR) (400°C / 2hrs)' },
     // New axial type: Range fan (shares NEIDS backend type, but different model range)
-    { code: 'HIGH_RANGE', label: 'High range axial fans' },
+    // { code: 'HIGH_RANGE', label: 'High range axial fans' },
   ];
   const axialTypes = axialCatalog.map(item => ({
     id: `AX_${item.code}`,
