@@ -6,20 +6,20 @@ const AddModel = () => {
   const [formData, setFormData] = useState({
     type: "",
     name: "",
-    factor: 0,
-    startRpmNumber: 0,
-    endRpmNumber: 0,
+    factor: '',
+    startRpmNumber: '',
+    endRpmNumber: '',
     // Centrifugal-only fields
     pressureType: "", // low | medium | high
     configurationType: "", // SISW | DIDW (for low)
     centrifugalType: "", // NBR, NBS, NBRS, NC, NBXI, NBR-D, NBS-D, NPD, NPE, NPF
     points: [
       {
-        rpm: 0,
-        flowRate: 0,
-        totalPressure: 0,
-        efficiency: 0,
-        lpa: 0,
+        rpm: '',
+        flowRate: '',
+        totalPressure: '',
+        efficiency: '',
+        lpa: '',
       },
     ],
   });
@@ -34,14 +34,14 @@ const AddModel = () => {
       setFormData({
         type: "",
         name: "",
-        factor: 0,
-        startRpmNumber: 0,
-        endRpmNumber: 0,
+        factor: '',
+        startRpmNumber: '',
+        endRpmNumber: '',
         pressureType: "",
         configurationType: "",
         centrifugalType: "",
         points: [
-          { rpm: 0, flowRate: 0, totalPressure: 0, efficiency: 0, lpa: 0 },
+          { rpm: '', flowRate: '', totalPressure: '', efficiency: '', lpa: '' },
         ],
       });
       setNotification({ type: 'success', message: 'Model has been added successfully.' });
@@ -57,7 +57,7 @@ const AddModel = () => {
     if (name.includes("points")) {
       const pointField = name.split(".")[1];
       const newPoints = [...formData.points];
-      const numericValue = value === "" ? 0 : parseFloat(value);
+      const numericValue = value === "" ? '' : parseFloat(value);
       newPoints[index] = { ...newPoints[index], [pointField]: numericValue };
       setFormData({ ...formData, points: newPoints });
     } else {
@@ -70,7 +70,7 @@ const AddModel = () => {
       ...formData,
       points: [
         ...formData.points,
-        { rpm: 0, flowRate: 0, totalPressure: 0, efficiency: 0, lpa: 0 },
+        { rpm: '', flowRate: '', totalPressure: '', efficiency: '', lpa: '' },
       ],
     });
   };
