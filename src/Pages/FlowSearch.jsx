@@ -130,7 +130,7 @@ const FlowSearch = () => {
     const wanted = String(code).trim().toUpperCase();
     let aliasWanted = wanted;
     if (wanted.includes('FAN SECTION TYPE')) {
-      aliasWanted = wanted.includes('NBR-D') ? 'NBR-D FAN SECTION TYPE' : (wanted.includes('NBS-D') ? 'NBS-D FAN SECTION TYPE' : wanted);
+      aliasWanted = wanted.includes('NBR-D') ? 'NBR-D FAN SECTION TYPE (NBC)' : (wanted.includes('NBS-D') ? 'NBS-D FAN SECTION TYPE (NBC)' : wanted);
     }
 
     // Helper to get filename without extension in UPPERCASE
@@ -247,7 +247,7 @@ const FlowSearch = () => {
   const axialCatalog = [
     // { code: 'NEI2D', label: 'Axial jet fan (NEI2D)' }, // Hidden temporarily
     { code: 'NEI3D', label: 'Axial box inline (NEI3D)' },
-    { code: 'NRT', label: 'Axial roof top (NRT)' },
+    { code: 'NRT', label: 'Axial roof top (NRA)' },
     { code: 'NEIDS', label: 'Axial fire rated (NEIDS) (400°C / 2hrs)' },
     { code: 'NEID', label: 'Axial ducted (NEID)' },
     { code: 'NETD', label: 'Axial wall mounted  (NETD)' },
@@ -274,7 +274,7 @@ const FlowSearch = () => {
   const getSeriesOptions = () => {
     if (pressureClass === 'low') {
       if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS'];
-      if (lowConfig === 'didw') return ['NBR-D', 'NBS-D', 'NBR-D FAN SECTION TYPE', 'NBS-D FAN SECTION TYPE'];
+      if (lowConfig === 'didw') return ['NBR-D', 'NBS-D', 'NBR-D FAN SECTION TYPE (NBC)', 'NBS-D FAN SECTION TYPE (NBC)'];
       return [];
     }
     if (pressureClass === 'medium') return ['NPD', 'NPE'];
@@ -290,8 +290,8 @@ const FlowSearch = () => {
       'NBRS',
       'NBR-D',
       'NBS-D',
-      'NBR-D FAN SECTION TYPE',
-      'NBS-D FAN SECTION TYPE',
+      'NBR-D FAN SECTION TYPE (NBC)',
+      'NBS-D FAN SECTION TYPE (NBC)',
       'NPD',
       'NPE',
       'NPF'
@@ -401,6 +401,13 @@ const FlowSearch = () => {
     return axialType;
   };
 
+  // Frontend-only display code for axial type (keep API code as NRT)
+  const getAxialTypeDisplayCode = (code) => {
+    if (!code) return '';
+    if (code === 'NRT') return 'NRA';
+    return code;
+  };
+
   // LPA distance handling:
   // - Optional field
   // - If empty, use default 1.5 m (no correction applied)
@@ -428,10 +435,10 @@ const FlowSearch = () => {
   // Hide BELT_DRIVE for specific axial models only
   const beltHidden =
     fanCategory === 'axial' &&
-    (isJetFan || ['NEI3D', 'NRT', 'NEIDS', 'NETD', 'NETD_FR'].includes(axialType));
+    (isJetFan || ['NEI3D', 'NRA', 'NEIDS', 'NETD', 'NETD_FR'].includes(axialType));
   
   // Check if it's NBR-D FAN SECTION TYPE or NBS-D FAN SECTION TYPE
-  const isFanSectionType = series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE';
+  const isFanSectionType = series === 'NBR-D FAN SECTION TYPE (NBC)' || series === 'NBS-D FAN SECTION TYPE (NBC)';
   
   const driveOptions = isFanSectionType 
     ? ['BELT_DRIVE'] // Only BELT_DRIVE for Fan Section Type
@@ -470,8 +477,8 @@ const FlowSearch = () => {
   // Normalize series aliases to canonical codes for logic/API
   const normalizeSeries = (val) => {
     const s = String(val || '').trim().toUpperCase();
-    if (s === 'NBR-D FAN SECTION TYPE') return 'NBR-D';
-    if (s === 'NBS-D FAN SECTION TYPE') return 'NBS-D';
+    if (s === 'NBR-D FAN SECTION TYPE (NBC)') return 'NBR-D';
+    if (s === 'NBS-D FAN SECTION TYPE (NBC)') return 'NBS-D';
     return s;
   };
 
@@ -1646,7 +1653,7 @@ const FlowSearch = () => {
       const info = [
         `Category: ${fanCategory || '-'}`,
         ...(fanCategory === 'axial' ? [
-          `Axial Type: ${axialType || '-'}`,
+          `Axial Type: ${getAxialTypeDisplayCode(axialType) || '-'}`,
         ] : []),
         ...(fanCategory === 'centrifugal' ? [
           `Pressure Type: ${pressureClass || '-'}`,
@@ -2247,7 +2254,7 @@ const FlowSearch = () => {
             dims.variants
           ) {
             const filteredVariants = dims.variants.filter(variant => {
-              if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') return variant.name.includes('Fan Section Type');
+              if (series === 'NBR-D FAN SECTION TYPE (NBC)' || series === 'NBS-D FAN SECTION TYPE (NBC)') return variant.name.includes('Fan Section Type');
               if (series === 'NBR-D' || series === 'NBS-D') return variant.name.includes('Dimensions');
               if (axialType === 'NEID') {
                 // Do not filter NEID variants by model name; include all and pick row per variant later
@@ -2367,8 +2374,8 @@ const FlowSearch = () => {
       if (String(series) === 'NBR') return 'NBR';
       if (String(series) === 'NBS') return 'NBS';
       if (String(series) === 'NBRS') return 'NBRS';
-      if (series === 'NBR-D' || series === 'NBR_D' || series === 'NBR-D FAN SECTION TYPE') return 'NBR_D';
-      if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D FAN SECTION TYPE') return 'NBS_D';
+      if (series === 'NBR-D' || series === 'NBR_D' || series === 'NBR-D FAN SECTION TYPE (NBC)') return 'NBR_D';
+      if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D FAN SECTION TYPE (NBC)') return 'NBS_D';
       if (String(series) === 'NPD') return 'NPD';
       if (String(series) === 'NPE') return 'NPE';
       if (String(series) === 'NPF') return 'NPF';
@@ -2576,7 +2583,7 @@ const FlowSearch = () => {
                 </div>
                 {axialType && (
                   <div className="mt-6 rounded-xl border border-[#E5EDFF] bg-white p-4">
-                    <div className="text-[#1F3B73] font-bold text-sm mb-3">{`${axialType} - ${axialTypes.find(a=>a.code === axialType)?.name}`}</div>
+                    <div className="text-[#1F3B73] font-bold text-sm mb-3">{`${getAxialTypeDisplayCode(axialType)} - ${axialTypes.find(a=>a.code === axialType)?.name}`}</div>
                     <div className="flex items-center gap-4">
                       {(() => { const sel = axialTypes.find(t => t.code === axialType); return sel?.img ? (
                         <img 
@@ -2794,7 +2801,9 @@ const FlowSearch = () => {
                         onClick={() => handleModelSelect(originalIdx)} 
                         className={`text-left p-3 rounded border transition-all ${selectedIndex===originalIdx ? 'border-[#93C5FD] ring-2 ring-[#93C5FD]' : 'border-[#E5EDFF]'}`}
                       >
-                        <div className="text-[#1E3A8A] font-medium">Model: {axialType || series} - {r.model?.name}</div>
+                        <div className="text-[#1E3A8A] font-medium">
+                          Model: {(fanCategory === 'axial' ? getAxialTypeDisplayCode(axialType) : series) || ''} - {r.model?.name}
+                        </div>
                         <div className="text-[#334155] text-sm">RPM: {r.rpm?.rpm}</div>
                         <div className="flex items-center gap-2 mt-2">
                           {isLoading ? (
@@ -3040,7 +3049,7 @@ const FlowSearch = () => {
                       ) {
                         // Filter variants based on selected series
                         const filteredVariants = dimensionsData.variants.filter(variant => {
-                          if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') {
+                          if (series === 'NBR-D FAN SECTION TYPE (NBC)' || series === 'NBS-D FAN SECTION TYPE (NBC)') {
                             return variant.name.includes('Fan Section Type');
                           }
                           if (series === 'NBR-D' || series === 'NBS-D') {
