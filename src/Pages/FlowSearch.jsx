@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRef } from 'react';
 import { jsPDF } from 'jspdf';
-import AxialCategoryImg from '../assets/symbol-axial.png';
+import AxialCategoryImg from '../assets/axial-sym.png';
 import CentrifugalCategoryImg from '../assets/symbol-centrifugal.webp';
 import NEI2DCatalog from '../assets/NEI2D-catalog.pdf';
 import { useSelector } from 'react-redux';

@@ -8,15 +8,15 @@ const AllModels = () => {
   const [formData, setFormData] = useState({
     type: '',
     name: '',
-    factor: 0,
-    startRpmNumber: 0,
-    endRpmNumber: 0,
+    factor: '',
+    startRpmNumber: '',
+    endRpmNumber: '',
     // Centrifugal-only fields
     pressureType: '',
     configurationType: '',
     centrifugalType: '',
     points: [
-      { rpm: 0, flowRate: 0, totalPressure: 0, efficiency: 0, lpa: 0 }
+      { rpm: '', flowRate: '', totalPressure: '', efficiency: '', lpa: '' }
     ]
   })
   const [originalData, setOriginalData] = useState(null)
@@ -160,7 +160,7 @@ const AllModels = () => {
   const addPoint = () => {
     setFormData({
       ...formData,
-      points: [...formData.points, { rpm: 0, flowRate: 0, totalPressure: 0, efficiency: 0, lpa: 0 }]
+      points: [...formData.points, { rpm: '', flowRate: '', totalPressure: '', efficiency: '', lpa: '' }]
     })
   }
 
