@@ -36,6 +36,43 @@ export const dimensionsData = {
         { key: "mass", label: "Mass(KG)" }
       ]
     },
+    NEI3D_FR: {
+      name: "Axial box inline Fire Rated (NEI3D_FR)",
+      image: "/src/assets/dimensions/NEI3D.png",
+      data: [
+        { model: "315", A: "422", B: "300", C: "380", },
+        { model: "400", A: "488", B: "384", C: "544", },
+        { model: "450", A: "549", B: "432", C: "612", },
+        { model: "500", A: "610", B: "480", C: "680", },
+        { model: "560", A: "683", B: "537", C: "761", },
+        { model: "630", A: "768", B: "604", C: "856",  },
+        { model: "710", A: "866", B: "682", C: "965",  },
+        { model: "800", A: "976", B: "768", C: "1088",  },
+        { model: "900", A: "1098", B: "864", C: "1224",  },
+        { model: "1000", A: "1220", B: "960", C: "1360",  },
+        { model: "1120", A: "1366", B: "1075", C: "1523",  },
+        { model: "1250", A: "1525", B: "1200", C: "1700",  },
+        { model: "315 H", A: "422", B: "300", C: "380", },
+        { model: "400 H", A: "488", B: "384", C: "544", },
+        { model: "450 H", A: "549", B: "432", C: "612", },
+        { model: "500 H", A: "610", B: "480", C: "680", },
+        { model: "560 H", A: "683", B: "537", C: "761", },
+        { model: "630 H", A: "768", B: "604", C: "856",  },
+        { model: "710 H", A: "866", B: "682", C: "965",  },
+        { model: "800 H", A: "976", B: "768", C: "1088",  },
+        { model: "900 H", A: "1098", B: "864", C: "1224",  },
+        { model: "1000 H", A: "1220", B: "960", C: "1360",  },
+        { model: "1120 H", A: "1366", B: "1075", C: "1523",  },
+        { model: "1250 H", A: "1525", B: "1200", C: "1700",  }
+      ],
+      columns: [
+        { key: "model", label: "MODEL" },
+        { key: "A", label: "A" },
+        { key: "B", label: "B" },
+        { key: "C", label: "C" },
+        { key: "mass", label: "Mass(KG)" }
+      ]
+    },
     NRT: {
       name: "Axial roof top (NRA)",
       image: "/src/assets/dimensions/NRA.png",

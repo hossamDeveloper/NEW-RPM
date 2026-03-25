@@ -247,11 +247,12 @@ const FlowSearch = () => {
   const axialCatalog = [
     // { code: 'NEI2D', label: 'Axial jet fan (NEI2D)' }, // Hidden temporarily
     { code: 'NEI3D', label: 'Axial box inline (NEI3D)' },
+    { code: 'NEI3D_FR', label: 'Axial box inline Fire Rated (NEI3D_FR)'},
     { code: 'NRT', label: 'Axial roof top (NRA)' },
     { code: 'NEIDS', label: 'Axial fire rated (NEIDS) (400°C / 2hrs)' },
     { code: 'NEID', label: 'Axial ducted (NEID)' },
     { code: 'NETD', label: 'Axial wall mounted  (NETD)' },
-    { code: 'NETD_FR', label: 'Axial wall mounted (Fire Rated) (NETD_FR) (400°C / 2hrs)' },
+    { code: 'NETD_FR', label: 'Axial wall mounted Fire Rated (NETD_FR) (400°C / 2hrs)' },
     // New axial type: Range fan (shares NEIDS backend type, but different model range)
     // { code: 'HIGH_RANGE', label: 'High range axial fans' },
   ];
@@ -397,6 +398,7 @@ const FlowSearch = () => {
   // Map special axial types to the effective backend type (for API payloads, dimensions, etc.)
   const getEffectiveAxialType = () => {
     if (axialType === 'HIGH_RANGE') return 'NEIDS';
+    if (axialType === 'NEI3D_FR') return 'NEI3D';
     if (axialType === 'NETD_FR') return 'NETD';
     return axialType;
   };
@@ -435,7 +437,7 @@ const FlowSearch = () => {
   // Hide BELT_DRIVE for specific axial models only
   const beltHidden =
     fanCategory === 'axial' &&
-    (isJetFan || ['NEI3D', 'NRA', 'NEIDS', 'NETD', 'NETD_FR'].includes(axialType));
+    (isJetFan || ['NEI3D', 'NEI3D_FR', 'NRA', 'NEIDS', 'NETD', 'NETD_FR'].includes(axialType));
   
   // Check if it's NBR-D FAN SECTION TYPE or NBS-D FAN SECTION TYPE
   const isFanSectionType = series === 'NBR-D FAN SECTION TYPE (NBC)' || series === 'NBS-D FAN SECTION TYPE (NBC)';
@@ -744,6 +746,39 @@ const FlowSearch = () => {
 
   const selected = apiResults[selectedIndex];
   const closestPoint = selected?.closestPoint;
+
+  // Static Efficiency = (Static Pressure (Pa) × Flow Rate (m³/s)) ÷ Brake Power × 1000
+  // Note: API values are assumed to be in standard units (Pa and m³/s) as the UI already
+  // converts from Pa/m³/s for charts. If the API returns different units, we convert using
+  // optional fields on the point object: `flowRateUnit` and `staticPressureUnit`.
+  const calculateStaticEfficiency = (point) => {
+    if (!point) return null;
+    const staticPressureRaw = Number(point.staticPressure);
+    const flowRateRaw = Number(point.flowRate);
+    const brakePowerRaw = Number(point.brakePower);
+
+    if (!Number.isFinite(staticPressureRaw) || !Number.isFinite(flowRateRaw) || !Number.isFinite(brakePowerRaw)) {
+      return null;
+    }
+    if (brakePowerRaw === 0) return null;
+
+    const resultsFlowUnit = point.flowRateUnit || 'm3/s'; // optional from API
+    const resultsStaticPressureUnit = point.staticPressureUnit || 'Pa'; // optional from API
+
+    const flowRateM3S = resultsFlowUnit === 'm3/s'
+      ? flowRateRaw
+      : convertFlowToM3S(flowRateRaw, resultsFlowUnit);
+
+    const staticPressurePa = resultsStaticPressureUnit === 'Pa'
+      ? staticPressureRaw
+      : convertPressureToPa(staticPressureRaw, resultsStaticPressureUnit);
+
+    if (!Number.isFinite(flowRateM3S) || !Number.isFinite(staticPressurePa)) return null;
+
+    return (staticPressurePa * flowRateM3S) / brakePowerRaw * 1000;
+  };
+
+  const workingPointStaticEfficiency = calculateStaticEfficiency(closestPoint);
 
   // Get points for the currently selected model from our dynamically loaded points
   const getCurrentModelPoints = () => {
@@ -1755,10 +1790,10 @@ const FlowSearch = () => {
           ['Flow Rate', `${Number(convertChartFlowValue(parseFloat(closestPoint.flowRate))).toFixed(6)} ${getFlowUnitLabel()}`],
           ['Total Pressure', `${Number(convertChartPressureValue(parseFloat(closestPoint.staticPressure + closestPoint.dynamicPressure))).toFixed(6)} ${getPressureUnitLabel()}`],
           ['Static Pressure', `${Number(convertChartPressureValue(Number(closestPoint.staticPressure))).toFixed(6)} ${getPressureUnitLabel()}`],
-          ['Efficiency', `${Number(closestPoint.efficiency).toFixed(2)} %`],
+          ['Efficiency', `${Number(closestPoint.efficiency ?? 0).toFixed(2)} %`],
           ['Brake Power', `${Number(closestPoint.brakePower).toFixed(6)} kw`],
           // ['Installed', `${(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw`],
-          ['Sound Level (LPA)', `${(Number(closestPoint.lpa)).toFixed(6)} db`],
+          ['Sound Pressure Level (LPA)', `${(Number(closestPoint.lpa)).toFixed(6)} db   @${effectiveLpaDistance} m`],
          
         ];
         const marginX = 40;
@@ -2616,7 +2651,7 @@ const FlowSearch = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[#1F3B73] text-base font-bold mb-2">Sound Level (LPA) Distance (meters)</label>
+                  <label className="block text-[#1F3B73] text-base font-bold mb-2">Sound Pressure Level (LPA) Distance (meters)</label>
                   <input
                     type="number"
                     step="any"
@@ -2878,11 +2913,12 @@ const FlowSearch = () => {
                         <tr><td className="py-2 px-4">Total Pressure</td><td className="py-2 px-4">{Number(convertChartPressureValue(parseFloat(closestPoint.staticPressure + closestPoint.dynamicPressure))).toFixed(6)} {getPressureUnitLabel()}</td></tr>
                         <tr><td className="py-2 px-4">Static Pressure</td><td className="py-2 px-4">{Number(convertChartPressureValue(Number(closestPoint.staticPressure))).toFixed(6)} {getPressureUnitLabel()}</td></tr>
                             <tr><td className="py-2 px-4">Velocity</td><td className="py-2 px-4">{Number(closestPoint.velocity).toFixed(6)} m/s</td></tr>
-                            <tr><td className="py-2 px-4">Efficiency</td><td className="py-2 px-4">{Number(closestPoint.efficiency).toFixed(6)} %</td></tr>
+                            <tr><td className="py-2 px-4">Efficiency</td><td className="py-2 px-4">{Number(closestPoint.efficiency ?? 0).toFixed(6)} %</td></tr>
+                            {/* <tr><td className="py-2 px-4">Static Efficiency</td><td className="py-2 px-4">{Number(workingPointStaticEfficiency ?? 0).toFixed(6)} %</td></tr> */}
                             <tr><td className="py-2 px-4">Brake Power</td><td className="py-2 px-4">{Number(closestPoint.brakePower).toFixed(6)} kw</td></tr>
                             {/* <tr><td className="py-2 px-4">Installed</td><td className="py-2 px-4">{(Number(closestPoint.brakePower) * 1.15).toFixed(6)} kw</td></tr> */}
                             <tr>
-                              <td className="py-2 px-4">Sound Level (LPA)     <span className="text-xs text-[#64748B] ml-2">
+                              <td className="py-2 px-4">Sound Pressure Level (LPA)     <span className="text-xs text-[#64748B] ml-2">
                                   (@ {effectiveLpaDistance} m)
                                 </span></td>
                               <td className="py-2 px-4">
