@@ -1777,6 +1777,47 @@ const FlowSearch = () => {
         y += 40;
       }
 
+         if (closestPoint) {
+        doc.setFontSize(13);
+        doc.setTextColor('#1e3a8a');
+        doc.text('Required Point', 40, y);
+        y += 10;
+        doc.setFontSize(12);
+        doc.setTextColor('#334155');
+        const wpRows = [
+          ['Flow Rate', `${searchData.flowRate} ${getFlowUnitLabel()}`],
+          ['Static Pressure', `${searchData.staticPressure} ${getPressureUnitLabel()}`],
+        
+         
+        ];
+        const marginX = 40;
+        const gap = 24;
+        const colWidth = (pageWidth - marginX * 2 - gap) / 2;
+        const rowsPerCol = Math.ceil(wpRows.length / 2);
+        const leftRows = wpRows.slice(0, rowsPerCol);
+        const rightRows = wpRows.slice(rowsPerCol);
+        const rowHeight = 24;
+        const cellPadding = 8;
+        
+        const drawCol = (x, startY, rows) => {
+          doc.setDrawColor(229, 237, 255);
+          doc.setLineWidth(0.5);
+          rows.forEach((row, idx) => {
+            const rowTop = startY + idx * rowHeight;
+            const textY = rowTop + 16;
+            doc.rect(x, rowTop, colWidth, rowHeight);
+            doc.setFont(undefined, 'bold');
+            doc.text(`${row[0]}:`, x + cellPadding, textY);
+            doc.setFont(undefined, 'normal');
+            doc.text(String(row[1]), x + cellPadding + 110, textY);
+          });
+        };
+        
+        const tableTop = y + 8;
+        drawCol(marginX, tableTop, leftRows);
+        drawCol(marginX + colWidth + gap, tableTop, rightRows);
+        y = tableTop + rowsPerCol * rowHeight + 22;
+      }
       // Working Point
       if (closestPoint) {
         doc.setFontSize(13);
