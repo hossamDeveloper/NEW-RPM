@@ -1423,6 +1423,28 @@ const FlowSearch = () => {
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       let y = 40;
+      const ensureSpace = (neededHeight) => {
+        // Prevent drawing tables/text beyond the current page bottom.
+        if (y + neededHeight > pageHeight - 40) {
+          doc.addPage();
+          y = 40;
+        }
+      };
+      const fitOneLine = (text, maxWidth) => {
+        const s = String(text ?? '');
+        if (!s) return '';
+        if (doc.getTextWidth(s) <= maxWidth) return s;
+        const ellipsis = '…';
+        let lo = 0;
+        let hi = s.length;
+        while (lo < hi) {
+          const mid = Math.ceil((lo + hi) / 2);
+          const candidate = s.slice(0, mid) + ellipsis;
+          if (doc.getTextWidth(candidate) <= maxWidth) lo = mid;
+          else hi = mid - 1;
+        }
+        return s.slice(0, Math.max(0, lo)) + ellipsis;
+      };
 
       // Prefer fetch->blob->FileReader for same-origin built assets
       const loadImageAsBase64 = (imageSrc) => {
@@ -1679,7 +1701,7 @@ const FlowSearch = () => {
       doc.setFontSize(16);
       doc.setTextColor('#1e3a8a');
       doc.text('Technical Submittal', pageWidth / 2, y, { align: 'center' });
-      y += 40;
+      y += 35;
 
       // Selected info
       doc.setFontSize(12);
@@ -1762,7 +1784,7 @@ const FlowSearch = () => {
         doc.setTextColor('#1e3a8a');
         doc.text('Description', 40, y);
         y += 25;
-        doc.setFontSize(13);
+        doc.setFontSize(10);
         doc.setTextColor('#334155');
         
         // Split description into lines and wrap text
@@ -1773,17 +1795,22 @@ const FlowSearch = () => {
             y = 40;
           }
           doc.text(line, 40, y);
-          y += 16;
+          y += 11;
         });
-        y += 40;
+        y += 20;
       }
 
-         if (closestPoint) {
+    try{
+      if (closestPoint) {
+        // Ensure "Required Point + Working Point" start together:
+        // - if the remaining space on the current page is not enough, move both to the next page
+        // - otherwise keep them on the same page
+        ensureSpace(270);
         doc.setFontSize(13);
         doc.setTextColor('#1e3a8a');
         doc.text('Required Point', 40, y);
         y += 10;
-        doc.setFontSize(12);
+        doc.setFontSize(9);
         doc.setTextColor('#334155');
         const wpRows = [
           ['Flow Rate', `${searchData.flowRate} ${getFlowUnitLabel()}`],
@@ -1797,38 +1824,46 @@ const FlowSearch = () => {
         const rowsPerCol = Math.ceil(wpRows.length / 2);
         const leftRows = wpRows.slice(0, rowsPerCol);
         const rightRows = wpRows.slice(rowsPerCol);
-        // Increase row height to support long labels wrapping to 2 lines
-        // (e.g. "Sound Pressure Level (LPA)"), without overlapping the value.
-        const rowHeight = 36;
+        // Compact single-line rows (no wrapping); truncate with ellipsis if needed.
+        const rowHeight = 20;
         const cellPadding = 8;
         
         const drawCol = (x, startY, rows) => {
           const labelX = x + cellPadding;
-          const valueX = x + cellPadding + 110;
-          // Keep label and value inside their own visual widths.
-          const labelMaxWidth = Math.max(40, valueX - labelX - 6);
-          const valueMaxWidth = Math.max(40, colWidth - (cellPadding + 110) - 6);
-          const lineHeight = 12; // Font size is 12 in this section.
 
           doc.setDrawColor(229, 237, 255);
           doc.setLineWidth(0.5);
-          rows.forEach((row, idx) => {
-            const rowTop = startY + idx * rowHeight;
-            const textY = rowTop + 22;
-            doc.rect(x, rowTop, colWidth, rowHeight);
-            
-            const labelLines = doc.splitTextToSize(`${row[0]}:`, labelMaxWidth);
-            const valueLines = doc.splitTextToSize(String(row[1]), valueMaxWidth);
+          let curY = startY;
+          rows.forEach((row) => {
+            // Special-case: show the full LPA label (allow 2 lines) by increasing only this row's height.
+            const isLpaLabel = String(row?.[0] || '').includes('Sound Pressure Level (LPA)');
+            const valueShift = isLpaLabel ? 145 : 108;
+            const valueX = x + cellPadding + valueShift;
+            const labelMaxWidth = Math.max(40, valueX - labelX - 6);
+            const valueMaxWidth = Math.max(40, colWidth - (valueX - x) - 6);
 
             doc.setFont(undefined, 'bold');
-            labelLines.forEach((line, i) => {
-              doc.text(String(line), labelX, textY + i * lineHeight);
-            });
-            
+            const labelText = `${row[0]}:`;
+            const labelLines = isLpaLabel ? doc.splitTextToSize(labelText, labelMaxWidth) : [fitOneLine(labelText, labelMaxWidth)];
+            const labelLineCount = Math.min(2, Array.isArray(labelLines) ? labelLines.length : 1);
+
+            const effectiveRowHeight = isLpaLabel ? Math.max(rowHeight, 14 + labelLineCount * 10 + 8) : rowHeight;
+            doc.rect(x, curY, colWidth, effectiveRowHeight);
+
+            // Text baseline
+            const firstLineY = curY + 14;
+            if (isLpaLabel) {
+              const linesToDraw = (Array.isArray(labelLines) ? labelLines : [String(labelLines)]).slice(0, 2);
+              linesToDraw.forEach((ln, i) => doc.text(String(ln), labelX, firstLineY + i * 10));
+            } else {
+              doc.text(String(labelLines[0] ?? ''), labelX, firstLineY);
+            }
+
             doc.setFont(undefined, 'normal');
-            valueLines.forEach((line, i) => {
-              doc.text(String(line), valueX, textY + i * lineHeight);
-            });
+            // Keep values single-line (truncate if needed), vertically aligned near first line.
+            doc.text(fitOneLine(String(row[1]), valueMaxWidth), valueX, firstLineY);
+
+            curY += effectiveRowHeight;
           });
         };
         
@@ -1843,7 +1878,7 @@ const FlowSearch = () => {
         doc.setTextColor('#1e3a8a');
         doc.text('Working Point', 40, y);
         y += 10;
-        doc.setFontSize(12);
+        doc.setFontSize(9);
         doc.setTextColor('#334155');
         const wpRows = [
           ['RPM', `${selected?.rpm?.rpm} `],
@@ -1862,47 +1897,74 @@ const FlowSearch = () => {
         const rowsPerCol = Math.ceil(wpRows.length / 2);
         const leftRows = wpRows.slice(0, rowsPerCol);
         const rightRows = wpRows.slice(rowsPerCol);
-        // Increase row height to support long labels wrapping to 2 lines
-        // (e.g. "Sound Pressure Level (LPA)"), without overlapping the value.
-        const rowHeight = 36;
+        // Compact single-line rows (no wrapping); truncate with ellipsis if needed.
+        const rowHeight = 25;
         const cellPadding = 8;
         
         const drawCol = (x, startY, rows) => {
           const labelX = x + cellPadding;
-          const valueX = x + cellPadding + 110;
-          // Keep label and value inside their own visual widths.
-          const labelMaxWidth = Math.max(40, valueX - labelX - 6);
-          const valueMaxWidth = Math.max(40, colWidth - (cellPadding + 110) - 6);
-          const lineHeight = 12; // Font size is 12 in this section.
-
           doc.setDrawColor(229, 237, 255);
           doc.setLineWidth(0.5);
-          rows.forEach((row, idx) => {
-            const rowTop = startY + idx * rowHeight;
-            const textY = rowTop + 16;
-            doc.rect(x, rowTop, colWidth, rowHeight);
-            
-            const labelLines = doc.splitTextToSize(`${row[0]}:`, labelMaxWidth);
-            const valueLines = doc.splitTextToSize(String(row[1]), valueMaxWidth);
+          let curY = startY;
+          rows.forEach((row) => {
+            const labelRaw = String(row?.[0] ?? '');
+            const isLpaLabel = /sound\s*pressure\s*level/i.test(labelRaw) || /\(lpa\)/i.test(labelRaw) || /\blpa\b/i.test(labelRaw);
+
+            // Move value to the right, and allow LPA label to occupy 2 lines (no ellipsis).
+            // For LPA row, reduce the gap to give more width to the value.
+            const valueShift = isLpaLabel ? 122 : 108;
+            const valueX = x + cellPadding + valueShift;
+            const labelMaxWidth = Math.max(40, valueX - labelX - 6);
+            const valueMaxWidth = Math.max(40, colWidth - (valueX - x) - 6);
 
             doc.setFont(undefined, 'bold');
-            labelLines.forEach((line, i) => {
-              doc.text(String(line), labelX, textY + i * lineHeight);
-            });
-            
+            const labelText = `${labelRaw}:`;
+            const labelLines = isLpaLabel
+              ? ['Sound Pressure Level', '(LPA):']
+              : [fitOneLine(labelText, labelMaxWidth)];
+            // Allow LPA value to wrap (up to 2 lines) to avoid truncation.
             doc.setFont(undefined, 'normal');
-            valueLines.forEach((line, i) => {
-              doc.text(String(line), valueX, textY + i * lineHeight);
-            });
+            const valueText = String(row?.[1] ?? '');
+            const valueLines = isLpaLabel ? doc.splitTextToSize(valueText, valueMaxWidth) : [fitOneLine(valueText, valueMaxWidth)];
+            const valueLineCount = Math.min(2, Array.isArray(valueLines) ? valueLines.length : 1);
+
+            const lineCountForHeight = isLpaLabel ? Math.max(2, valueLineCount) : 1;
+            const effectiveRowHeight = isLpaLabel ? Math.max(rowHeight, 14 + lineCountForHeight * 10 + 8) : rowHeight;
+
+            doc.rect(x, curY, colWidth, effectiveRowHeight);
+
+            const firstLineY = curY + 14;
+            doc.setFont(undefined, 'bold');
+            if (isLpaLabel) {
+              doc.text(labelLines[0], labelX, firstLineY);
+              doc.text(labelLines[1], labelX, firstLineY + 10);
+            } else {
+              doc.text(labelLines[0], labelX, firstLineY);
+            }
+
+            doc.setFont(undefined, 'normal');
+            if (isLpaLabel) {
+              const linesToDraw = (Array.isArray(valueLines) ? valueLines : [String(valueLines)]).slice(0, 2);
+              linesToDraw.forEach((ln, i) => doc.text(String(ln), valueX, firstLineY + i * 10));
+            } else {
+              doc.text(String(valueLines[0] ?? ''), valueX, firstLineY);
+            }
+
+            curY += effectiveRowHeight;
           });
+          return curY;
         };
         
         const tableTop = y + 8;
-        drawCol(marginX, tableTop, leftRows);
-        drawCol(marginX + colWidth + gap, tableTop, rightRows);
-        y = tableTop + rowsPerCol * rowHeight + 22;
+        const leftEndY = drawCol(marginX, tableTop, leftRows);
+        const rightEndY = drawCol(marginX + colWidth + gap, tableTop, rightRows);
+        y = Math.max(leftEndY, rightEndY) + 22;
       }
 
+    }catch (error){
+console.log('working point not loaded', error);
+
+    }
       // Add dimensions section
       try {
         // Determine which dimensions set to use (axial types or centrifugal NBR variants)
@@ -3454,7 +3516,7 @@ const FlowSearch = () => {
                           <ProgressiveImage 
                                             src={wireImg} 
                                             alt={'wired'}
-                                            className="max-w-full h-auto h-full object-cover"
+                                            className="max-w-full h-full object-cover"
                                             loading="lazy"
                                             decoding="async"
                                           />
