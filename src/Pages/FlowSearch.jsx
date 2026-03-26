@@ -20,6 +20,7 @@ import annotationPlugin from 'chartjs-plugin-annotation';
 import { useMutation } from '@tanstack/react-query';
 import api from '../redux/api';
 import logoImg from '../assets/logo.png';
+import wireImg from '../assets/wired.jpeg';
 import { dimensionsData, getDimensionsData, getModelDimensions } from "../Data/dimensions.js";
 import { getDescription } from "../Data/descriptions.js";
 
@@ -1796,20 +1797,38 @@ const FlowSearch = () => {
         const rowsPerCol = Math.ceil(wpRows.length / 2);
         const leftRows = wpRows.slice(0, rowsPerCol);
         const rightRows = wpRows.slice(rowsPerCol);
-        const rowHeight = 24;
+        // Increase row height to support long labels wrapping to 2 lines
+        // (e.g. "Sound Pressure Level (LPA)"), without overlapping the value.
+        const rowHeight = 36;
         const cellPadding = 8;
         
         const drawCol = (x, startY, rows) => {
+          const labelX = x + cellPadding;
+          const valueX = x + cellPadding + 110;
+          // Keep label and value inside their own visual widths.
+          const labelMaxWidth = Math.max(40, valueX - labelX - 6);
+          const valueMaxWidth = Math.max(40, colWidth - (cellPadding + 110) - 6);
+          const lineHeight = 12; // Font size is 12 in this section.
+
           doc.setDrawColor(229, 237, 255);
           doc.setLineWidth(0.5);
           rows.forEach((row, idx) => {
             const rowTop = startY + idx * rowHeight;
-            const textY = rowTop + 16;
+            const textY = rowTop + 22;
             doc.rect(x, rowTop, colWidth, rowHeight);
+            
+            const labelLines = doc.splitTextToSize(`${row[0]}:`, labelMaxWidth);
+            const valueLines = doc.splitTextToSize(String(row[1]), valueMaxWidth);
+
             doc.setFont(undefined, 'bold');
-            doc.text(`${row[0]}:`, x + cellPadding, textY);
+            labelLines.forEach((line, i) => {
+              doc.text(String(line), labelX, textY + i * lineHeight);
+            });
+            
             doc.setFont(undefined, 'normal');
-            doc.text(String(row[1]), x + cellPadding + 110, textY);
+            valueLines.forEach((line, i) => {
+              doc.text(String(line), valueX, textY + i * lineHeight);
+            });
           });
         };
         
@@ -1843,20 +1862,38 @@ const FlowSearch = () => {
         const rowsPerCol = Math.ceil(wpRows.length / 2);
         const leftRows = wpRows.slice(0, rowsPerCol);
         const rightRows = wpRows.slice(rowsPerCol);
-        const rowHeight = 24;
+        // Increase row height to support long labels wrapping to 2 lines
+        // (e.g. "Sound Pressure Level (LPA)"), without overlapping the value.
+        const rowHeight = 36;
         const cellPadding = 8;
         
         const drawCol = (x, startY, rows) => {
+          const labelX = x + cellPadding;
+          const valueX = x + cellPadding + 110;
+          // Keep label and value inside their own visual widths.
+          const labelMaxWidth = Math.max(40, valueX - labelX - 6);
+          const valueMaxWidth = Math.max(40, colWidth - (cellPadding + 110) - 6);
+          const lineHeight = 12; // Font size is 12 in this section.
+
           doc.setDrawColor(229, 237, 255);
           doc.setLineWidth(0.5);
           rows.forEach((row, idx) => {
             const rowTop = startY + idx * rowHeight;
             const textY = rowTop + 16;
             doc.rect(x, rowTop, colWidth, rowHeight);
+            
+            const labelLines = doc.splitTextToSize(`${row[0]}:`, labelMaxWidth);
+            const valueLines = doc.splitTextToSize(String(row[1]), valueMaxWidth);
+
             doc.setFont(undefined, 'bold');
-            doc.text(`${row[0]}:`, x + cellPadding, textY);
+            labelLines.forEach((line, i) => {
+              doc.text(String(line), labelX, textY + i * lineHeight);
+            });
+            
             doc.setFont(undefined, 'normal');
-            doc.text(String(row[1]), x + cellPadding + 110, textY);
+            valueLines.forEach((line, i) => {
+              doc.text(String(line), valueX, textY + i * lineHeight);
+            });
           });
         };
         
@@ -2429,6 +2466,49 @@ const FlowSearch = () => {
       } catch (error) {
         console.log('Dimensions (post-charts) not loaded:', error);
       }
+
+      // Add Wire image at the end of Technical Submittal (for any model/type)
+      try {
+        const wireImageBase64 = await loadImageAsBase64(wireImg);
+        const wireFormat =
+          typeof wireImageBase64 === 'string' && wireImageBase64.startsWith('data:image/jpeg')
+            ? 'JPEG'
+            : 'PNG';
+
+        const img = new Image();
+        img.src = wireImageBase64;
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          setTimeout(() => reject(new Error('Wire image load timeout')), 5000);
+        });
+
+        const naturalW = img.naturalWidth || 600;
+        const naturalH = img.naturalHeight || 400;
+        const maxW = pageWidth - 80;
+        const maxH = 280;
+        const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
+        const imgW = Math.max(1, Math.round(naturalW * scale));
+        const imgH = Math.max(1, Math.round(naturalH * scale));
+
+        if (y + imgH + 60 > pageHeight - 40) {
+          doc.addPage();
+          y = 40;
+        }
+
+        doc.setFontSize(13);
+        doc.setTextColor('#1e3a8a');
+        doc.text('Wiring', 60, y, { align: 'center' });
+        y += 16;
+
+        const imageX = 40 + Math.max(0, Math.floor((maxW - imgW) / 2));
+        const imageY = y;
+        doc.addImage(wireImageBase64, wireFormat, imageX, imageY, imgW, imgH);
+        y = imageY + imgH + 18;
+      } catch (wireErr) {
+        console.warn('Wiring image not available in PDF:', wireErr);
+      }
+
       doc.save(`technical-submittal-${selectedModel || 'selection'}.pdf`);
       setShowPdfModal(false);
     } catch (error) {
@@ -2936,6 +3016,16 @@ const FlowSearch = () => {
                   >
                     Dimensions
                   </button>
+                  <button
+                    onClick={() => setActiveTab('wire')}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === 'wire'
+                        ? 'border-[#1E3A8A] text-[#1E3A8A]'
+                        : 'border-transparent text-[#64748B] hover:text-[#1E3A8A]'
+                    }`}
+                  >
+                    Wiring
+                  </button>
                  
                 </div>
 
@@ -3348,6 +3438,30 @@ const FlowSearch = () => {
                         </div>
                       );
                     })()}
+                  </div>
+                )}
+                 {activeTab === 'wire' && (
+                  <div className="space-y-6">
+                    
+                  
+                        
+                       
+                      
+                     
+                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
+                          <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Wiring</h3>
+                          <div className="h-[500px]">
+                          <ProgressiveImage 
+                                            src={wireImg} 
+                                            alt={'wired'}
+                                            className="max-w-full h-auto h-full object-cover"
+                                            loading="lazy"
+                                            decoding="async"
+                                          />
+                          </div>
+                        </div>
+                     
+                  
                   </div>
                 )}
               </div>
