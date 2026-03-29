@@ -20,7 +20,8 @@ import annotationPlugin from 'chartjs-plugin-annotation';
 import { useMutation } from '@tanstack/react-query';
 import api from '../redux/api';
 import logoImg from '../assets/logo.png';
-import wireImg from '../assets/wired.jpeg';
+import wireImg1 from '../assets/wiring1.png';
+import wireImg2 from '../assets/wiring2.jpeg';
 import { dimensionsData, getDimensionsData, getModelDimensions } from "../Data/dimensions.js";
 import { getDescription } from "../Data/descriptions.js";
 
@@ -248,7 +249,7 @@ const FlowSearch = () => {
   const axialCatalog = [
     // { code: 'NEI2D', label: 'Axial jet fan (NEI2D)' }, // Hidden temporarily
     { code: 'NEI3D', label: 'Axial box inline (NEI3D)' },
-    { code: 'NEI3D_FR', label: 'Axial box inline Fire Rated (NEI3D_FR)'},
+    { code: 'NEI3D_FR', label: 'Axial box inline Fire Rated (NEI3D_FR) (400°C / 2hrs)'},
     { code: 'NRT', label: 'Axial roof top (NRA)' },
     { code: 'NEIDS', label: 'Axial fire rated (NEIDS) (400°C / 2hrs)' },
     { code: 'NEID', label: 'Axial ducted (NEID)' },
@@ -2529,46 +2530,63 @@ console.log('working point not loaded', error);
         console.log('Dimensions (post-charts) not loaded:', error);
       }
 
-      // Add Wire image at the end of Technical Submittal (for any model/type)
-      try {
-        const wireImageBase64 = await loadImageAsBase64(wireImg);
-        const wireFormat =
-          typeof wireImageBase64 === 'string' && wireImageBase64.startsWith('data:image/jpeg')
-            ? 'JPEG'
-            : 'PNG';
+      // Wiring diagrams at end of Technical Submittal (wireImg1 then wireImg2)
+      const wireSources = [wireImg1, wireImg2];
+      let wiringHeaderDrawn = false;
+      for (let wi = 0; wi < wireSources.length; wi++) {
+        const wireSrc = wireSources[wi];
+        try {
+          const wireImageBase64 = await loadImageAsBase64(wireSrc);
+          const wireFormat =
+            typeof wireImageBase64 === 'string' && wireImageBase64.startsWith('data:image/jpeg')
+              ? 'JPEG'
+              : 'PNG';
 
-        const img = new Image();
-        img.src = wireImageBase64;
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-          setTimeout(() => reject(new Error('Wire image load timeout')), 5000);
-        });
+          const img = new Image();
+          img.src = wireImageBase64;
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            setTimeout(() => reject(new Error('Wire image load timeout')), 5000);
+          });
 
-        const naturalW = img.naturalWidth || 600;
-        const naturalH = img.naturalHeight || 400;
-        const maxW = pageWidth - 80;
-        const maxH = 280;
-        const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
-        const imgW = Math.max(1, Math.round(naturalW * scale));
-        const imgH = Math.max(1, Math.round(naturalH * scale));
+          const naturalW = img.naturalWidth || 600;
+          const naturalH = img.naturalHeight || 400;
+          const wireSideMargin = 40;
+          const maxW = pageWidth - 2 * wireSideMargin;
+          const maxH = 500;
+          const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
+          const imgW = Math.max(1, Math.round(naturalW * scale));
+          const imgH = Math.max(1, Math.round(naturalH * scale));
 
-        if (y + imgH + 60 > pageHeight - 40) {
-          doc.addPage();
-          y = 40;
+          const headerBlock = wiringHeaderDrawn ? 12 : 28;
+          if (y + imgH + 50 + headerBlock > pageHeight - 40) {
+            doc.addPage();
+            y = 40;
+          }
+
+          if (!wiringHeaderDrawn) {
+            doc.setFontSize(13);
+            doc.setTextColor('#1e3a8a');
+            doc.text('Wiring', 40 , y);
+            y += 20;
+            wiringHeaderDrawn = true;
+          } else {
+            y += 12;
+          }
+
+          if (y + imgH > pageHeight - 40) {
+            doc.addPage();
+            y = 40;
+          }
+
+          const imageX = wireSideMargin + Math.max(0, Math.floor((maxW - imgW) / 2));
+          const imageY = y;
+          doc.addImage(wireImageBase64, wireFormat, imageX, imageY, imgW, imgH);
+          y = imageY + imgH + 22;
+        } catch (wireErr) {
+          console.warn(`Wiring image ${wi + 1} not available in PDF:`, wireErr);
         }
-
-        doc.setFontSize(13);
-        doc.setTextColor('#1e3a8a');
-        doc.text('Wiring', 60, y, { align: 'center' });
-        y += 16;
-
-        const imageX = 40 + Math.max(0, Math.floor((maxW - imgW) / 2));
-        const imageY = y;
-        doc.addImage(wireImageBase64, wireFormat, imageX, imageY, imgW, imgH);
-        y = imageY + imgH + 18;
-      } catch (wireErr) {
-        console.warn('Wiring image not available in PDF:', wireErr);
       }
 
       doc.save(`technical-submittal-${selectedModel || 'selection'}.pdf`);
@@ -3512,14 +3530,26 @@ console.log('working point not loaded', error);
                      
                         <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
                           <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Wiring</h3>
-                          <div className="h-[500px]">
-                          <ProgressiveImage 
-                                            src={wireImg} 
+                          <div className="h-auto flex justify-center items-center">
+                           <div className='h-[600px] w-1/2'>
+                               <ProgressiveImage 
+                                            src={wireImg1} 
                                             alt={'wired'}
                                             className="max-w-full h-full object-cover"
                                             loading="lazy"
                                             decoding="async"
                                           />
+                          </div>
+                          <div className='h-[600px] w-1/2'>
+                          <ProgressiveImage 
+                                            src={wireImg2} 
+                                            alt={'wired'}
+                                            className="max-w-full h-full object-cover"
+                                            loading="lazy"
+                                            decoding="async"
+                                          />
+                          </div>
+                                        
                           </div>
                         </div>
                      
