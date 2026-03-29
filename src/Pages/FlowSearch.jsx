@@ -439,13 +439,23 @@ const FlowSearch = () => {
   // Hide BELT_DRIVE for specific axial models only
   const beltHidden =
     fanCategory === 'axial' &&
-    (isJetFan || ['NEI3D', 'NEI3D_FR', 'NRA', 'NEIDS', 'NETD', 'NETD_FR'].includes(axialType));
+    (isJetFan || ['NEI3D', 'NEI3D_FR', 'NRT', 'NRA', 'NEIDS', 'NETD', 'NETD_FR'].includes(axialType));
   
   // Check if it's NBR-D FAN SECTION TYPE or NBS-D FAN SECTION TYPE
   const isFanSectionType = series === 'NBR-D FAN SECTION TYPE (NBC)' || series === 'NBS-D FAN SECTION TYPE (NBC)';
   
+  // Some axial/centrifugal types allow only direct drive modes.
+  // - Axial roof top (NRA) is internally `NRT`
+  // - Centrifugal fire rated (NBRS) is internally `NBRS`
+  const isDirectDriveOnly = (fanCategory === 'axial' && (axialType === 'NRT' || axialType === 'NRA')) ||
+    (fanCategory === 'centrifugal' && series === 'NBRS');
+
+  const directDriveOptions = ['DIRECT_DRIVE', 'DIRECT_DRIVE_WITH_FREQUENCY_DRIVE'];
+
   const driveOptions = isFanSectionType 
     ? ['BELT_DRIVE'] // Only BELT_DRIVE for Fan Section Type
+    : isDirectDriveOnly
+      ? directDriveOptions
     : [
         'DIRECT_DRIVE',
         ...(beltHidden ? [] : ['BELT_DRIVE']),
@@ -458,6 +468,12 @@ const FlowSearch = () => {
       setDriveType('DIRECT_DRIVE');
     }
   }, [beltHidden, driveType, isFanSectionType]);
+
+  useEffect(() => {
+    if (!isFanSectionType && isDirectDriveOnly && !directDriveOptions.includes(driveType)) {
+      setDriveType('DIRECT_DRIVE');
+    }
+  }, [isDirectDriveOnly, driveType, isFanSectionType]);
 
   // Auto-set driveType to BELT_DRIVE when Fan Section Type is selected
   useEffect(() => {
