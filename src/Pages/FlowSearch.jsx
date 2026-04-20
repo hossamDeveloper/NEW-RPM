@@ -131,8 +131,8 @@ const FlowSearch = () => {
     if (!code) return undefined;
     const wanted = String(code).trim().toUpperCase();
     let aliasWanted = wanted;
-    if (wanted.includes('FAN SECTION TYPE')) {
-      aliasWanted = wanted.includes('NBR-D') ? 'NBR-D FAN SECTION TYPE (NBC)' : (wanted.includes('NBS-D') ? 'NBS-D FAN SECTION TYPE (NBC)' : wanted);
+    if (wanted.includes('NBC')) {
+      aliasWanted = wanted.includes('NBR-D') ? 'NBR-D (NBC)' : (wanted.includes('NBS-D') ? 'NBS-D  (NBC)' : wanted);
     }
 
     // Helper to get filename without extension in UPPERCASE
@@ -251,7 +251,9 @@ const FlowSearch = () => {
     { code: 'NEI3D', label: 'Axial box inline (NEI3D)' },
     { code: 'NEI3D_FR', label: 'Axial box inline Fire Rated (NEI3D_FR) (400°C / 2hrs)'},
     { code: 'NRT', label: 'Axial roof top (NRA)' },
-    { code: 'NEIDS', label: 'Axial fire rated (NEIDS) (400°C / 2hrs)' },
+    { code: 'NEIDS1', label: 'Axial fire rated (NEID_FR1) (400°C / 2hrs)', imageKey: 'NEIDS1' },
+    { code: 'NEIDS', label: 'Axial fire rated (NEID_FR2) (400°C / 2hrs)', imageKey: 'NEIDS2' },
+    { code: 'NEIDS3', label: 'Axial fire rated (NEID_FR3) (400°C / 2hrs)', imageKey: 'NEIDS3' },
     { code: 'NEID', label: 'Axial ducted (NEID)' },
     { code: 'NETD', label: 'Axial wall mounted  (NETD)' },
     { code: 'NETD_FR', label: 'Axial wall mounted Fire Rated (NETD_FR) (400°C / 2hrs)' },
@@ -277,7 +279,7 @@ const FlowSearch = () => {
   const getSeriesOptions = () => {
     if (pressureClass === 'low') {
       if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS'];
-      if (lowConfig === 'didw') return ['NBR-D', 'NBS-D', 'NBR-D FAN SECTION TYPE (NBC)', 'NBS-D FAN SECTION TYPE (NBC)'];
+      if (lowConfig === 'didw') return ['NBR-D', 'NBS-D', 'NBR-D (NBC)', 'NBS-D (NBC)'];
       return [];
     }
     if (pressureClass === 'medium') return ['NPD', 'NPE'];
@@ -293,13 +295,13 @@ const FlowSearch = () => {
       'NBRS',
       'NBR-D',
       'NBS-D',
-      'NBR-D FAN SECTION TYPE (NBC)',
-      'NBS-D FAN SECTION TYPE (NBC)',
+      'NBR-D (NBC)',
+      'NBS-D (NBC)',
       'NPD',
       'NPE',
       'NPF'
     ].filter(s => !hiddenCentrifugalSeries.includes(s));
-    //return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP', 'NBR-D', 'NBS-D', 'NBR-D FAN SECTION TYPE', 'NBS-D FAN SECTION TYPE', 'NPD', 'NPE', 'NPF'];
+    //return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP', 'NBR-D', 'NBS-D', 'NBR-D ', 'NBS-D ', 'NPD', 'NPE', 'NPF'];
   };
   
   const seriesCards = getAllSeriesOptions().map(s => ({
@@ -396,10 +398,12 @@ const FlowSearch = () => {
   };
 
   const isJetFan = axialType === 'NEI2D';
+  const isNeidsFamily = ['NEIDS1', 'NEIDS', 'NEIDS3'].includes(axialType);
 
   // Map special axial types to the effective backend type (for API payloads, dimensions, etc.)
   const getEffectiveAxialType = () => {
     if (axialType === 'HIGH_RANGE') return 'NEIDS';
+    if (isNeidsFamily) return 'NEIDS';
     if (axialType === 'NEI3D_FR') return 'NEI3D';
     if (axialType === 'NETD_FR') return 'NETD';
     return axialType;
@@ -409,7 +413,15 @@ const FlowSearch = () => {
   const getAxialTypeDisplayCode = (code) => {
     if (!code) return '';
     if (code === 'NRT') return 'NRA';
+    if (code === 'NEIDS1') return 'NEID_FR1';
+    if (code === 'NEIDS') return 'NEID_FR2';
+    if (code === 'NEIDS3') return 'NEID_FR3';
     return code;
+  };
+  const getAxialTypeDisplayName = (code) => {
+    if (!code) return '';
+    const match = axialCatalog.find(item => item.code === code);
+    return match?.label || code;
   };
 
   // LPA distance handling:
@@ -439,10 +451,10 @@ const FlowSearch = () => {
   // Hide BELT_DRIVE for specific axial models only
   const beltHidden =
     fanCategory === 'axial' &&
-    (isJetFan || ['NEI3D', 'NEI3D_FR', 'NRT', 'NRA', 'NEIDS', 'NETD', 'NETD_FR'].includes(axialType));
+    (isJetFan || isNeidsFamily || ['NEI3D', 'NEI3D_FR', 'NRT', 'NRA', 'NETD', 'NETD_FR'].includes(axialType));
   
-  // Check if it's NBR-D FAN SECTION TYPE or NBS-D FAN SECTION TYPE
-  const isFanSectionType = series === 'NBR-D FAN SECTION TYPE (NBC)' || series === 'NBS-D FAN SECTION TYPE (NBC)';
+  // Check if it's NBR-D  or NBS-D 
+  const isFanSectionType = series === 'NBR-D (NBC)' || series === 'NBS-D  (NBC)';
   
   // Some axial/centrifugal types allow only direct drive modes.
   // - Axial roof top (NRA) is internally `NRT`
@@ -453,7 +465,7 @@ const FlowSearch = () => {
   const directDriveOptions = ['DIRECT_DRIVE', 'DIRECT_DRIVE_WITH_FREQUENCY_DRIVE'];
 
   const driveOptions = isFanSectionType 
-    ? ['BELT_DRIVE'] // Only BELT_DRIVE for Fan Section Type
+    ? ['BELT_DRIVE'] // Only BELT_DRIVE for 
     : isDirectDriveOnly
       ? directDriveOptions
     : [
@@ -475,7 +487,7 @@ const FlowSearch = () => {
     }
   }, [isDirectDriveOnly, driveType, isFanSectionType]);
 
-  // Auto-set driveType to BELT_DRIVE when Fan Section Type is selected
+  // Auto-set driveType to BELT_DRIVE when  is selected
   useEffect(() => {
     if (isFanSectionType && driveType !== 'BELT_DRIVE') {
       setDriveType('BELT_DRIVE');
@@ -497,8 +509,8 @@ const FlowSearch = () => {
   // Normalize series aliases to canonical codes for logic/API
   const normalizeSeries = (val) => {
     const s = String(val || '').trim().toUpperCase();
-    if (s === 'NBR-D FAN SECTION TYPE (NBC)') return 'NBR-D';
-    if (s === 'NBS-D FAN SECTION TYPE (NBC)') return 'NBS-D';
+    if (s === 'NBR-D (NBC)') return 'NBR-D';
+    if (s === 'NBS-D (NBC)') return 'NBS-D';
     return s;
   };
 
@@ -859,7 +871,7 @@ const FlowSearch = () => {
     if (fanCategory !== 'axial' || !axialType) return results;
 
     const shouldFilter =
-      axialType === 'NEIDS' ||
+      isNeidsFamily ||
       axialType === 'NEID' ||
       axialType === 'HIGH_RANGE';
     if (!shouldFilter) return results;
@@ -872,7 +884,7 @@ const FlowSearch = () => {
       // If we can't parse a model number, drop it from these restricted views
       if (!modelNumber) return false;
 
-      if (axialType === 'NEIDS' || axialType === 'NEID') {
+      if (isNeidsFamily || axialType === 'NEID') {
         return modelNumber <= 2240;
       }
       if (axialType === 'HIGH_RANGE') {
@@ -2021,8 +2033,8 @@ console.log('working point not loaded', error);
         //   if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR') || (typeKeyForPdf === 'NBR_D') || (typeKeyForPdf === 'NBS_D') || (typeKeyForPdf === 'NPD')) && dims.variants) {
         //     // Filter variants based on selected series
         //     const filteredVariants = dims.variants.filter(variant => {
-        //       if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') {
-        //         return variant.name.includes('Fan Section Type');
+        //       if (series === 'NBR-D ' || series === 'NBS-D ') {
+        //         return variant.name.includes('');
         //       }
         //       if (series === 'NBR-D' || series === 'NBS-D') {
         //         return variant.name.includes('Dimensions'); // Show only Dimensions variant for NBR-D/NBS-D
@@ -2446,7 +2458,7 @@ console.log('working point not loaded', error);
             dims.variants
           ) {
             const filteredVariants = dims.variants.filter(variant => {
-              if (series === 'NBR-D FAN SECTION TYPE (NBC)' || series === 'NBS-D FAN SECTION TYPE (NBC)') return variant.name.includes('Fan Section Type');
+              if (series === 'NBR-D (NBC)' || series === 'NBS-D (NBC)') return variant.name.includes('');
               if (series === 'NBR-D' || series === 'NBS-D') return variant.name.includes('Dimensions');
               if (axialType === 'NEID') {
                 // Do not filter NEID variants by model name; include all and pick row per variant later
@@ -2619,6 +2631,7 @@ console.log('working point not loaded', error);
     if (fanCategory === 'axial') {
       // Map special UI-only axial types to real dimension keys
       if (axialType === 'HIGH_RANGE') return 'NEIDS';
+      if (['NEIDS1', 'NEIDS3'].includes(axialType)) return 'NEIDS';
       if (axialType === 'NETD_FR') return 'NETD';
       return axialType || null;
     }
@@ -2626,8 +2639,8 @@ console.log('working point not loaded', error);
       if (String(series) === 'NBR') return 'NBR';
       if (String(series) === 'NBS') return 'NBS';
       if (String(series) === 'NBRS') return 'NBRS';
-      if (series === 'NBR-D' || series === 'NBR_D' || series === 'NBR-D FAN SECTION TYPE (NBC)') return 'NBR_D';
-      if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D FAN SECTION TYPE (NBC)') return 'NBS_D';
+      if (series === 'NBR-D' || series === 'NBR_D' || series === 'NBR-D (NBC)') return 'NBR_D';
+      if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D (NBC)') return 'NBS_D';
       if (String(series) === 'NPD') return 'NPD';
       if (String(series) === 'NPE') return 'NPE';
       if (String(series) === 'NPF') return 'NPF';
@@ -3011,11 +3024,19 @@ console.log('working point not loaded', error);
 
         {apiResults.length > 0 && (() => {
           const filteredResults = filterResultsByAxialModelRange(apiResults);
+          const lpaValues = filteredResults
+            .map((result) => Number(result?.closestPoint?.lpa))
+            .filter((value) => Number.isFinite(value));
+          const minLpa = lpaValues.length > 0 ? Math.min(...lpaValues) : null;
+          const brakePowers = filteredResults
+            .map((result) => Number(result?.closestPoint?.brakePower))
+            .filter((value) => Number.isFinite(value));
+          const minBrakePower = brakePowers.length > 0 ? Math.min(...brakePowers) : null;
 
           // Show message if no results after filtering
           if (filteredResults.length === 0) {
             let message = '';
-            if (fanCategory === 'axial' && axialType === 'NEIDS') {
+            if (fanCategory === 'axial' && isNeidsFamily) {
               message = 'No results.';
             } else if (fanCategory === 'axial' && axialType === 'NEID') {
               message = 'No results.';
@@ -3038,7 +3059,27 @@ console.log('working point not loaded', error);
           return (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className="space-y-8">
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Results</h3>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h3 className="text-xl font-semibold text-[#1E3A8A]">Results</h3>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1 text-[#334155]">
+                      <span className="w-3 h-3 rounded border-2 border-orange-500"></span>
+                      Lowest LPA
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[#334155]">
+                      <span className="w-3 h-3 rounded border-2 border-green-500"></span>
+                      Lowest Brake Power
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[#334155]">
+                      <span className="w-3 h-3 rounded bg-gradient-to-r from-orange-500 to-green-500"></span>
+                      Lowest LPA + BP
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[#334155]">
+                      <span className="w-3 h-3 rounded border-2 border-[#93C5FD]"></span>
+                      Selected
+                    </span>
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {filteredResults.map((r, idx) => {
                     // Find original index in apiResults for proper selection handling
@@ -3046,12 +3087,34 @@ console.log('working point not loaded', error);
                     const rpmId = r?.rpm?._id;
                     const isLoading = loadingPoints[rpmId];
                     const hasPoints = modelPoints[rpmId]?.length > 0;
+                    const resultLpa = Number(r?.closestPoint?.lpa);
+                    const hasLowestLpa = Number.isFinite(resultLpa) && minLpa !== null && resultLpa === minLpa;
+                    const resultBrakePower = Number(r?.closestPoint?.brakePower);
+                    const hasLowestBrakePower = Number.isFinite(resultBrakePower) && minBrakePower !== null && resultBrakePower === minBrakePower;
+                    const isLowestBoth = hasLowestLpa && hasLowestBrakePower;
                     
                     return (
                       <button 
                         key={originalIdx} 
                         onClick={() => handleModelSelect(originalIdx)} 
-                        className={`text-left p-3 rounded border transition-all ${selectedIndex===originalIdx ? 'border-[#93C5FD] ring-2 ring-[#93C5FD]' : 'border-[#E5EDFF]'}`}
+                        className={`text-left p-3 rounded border transition-all ${
+                          selectedIndex===originalIdx
+                            ? isLowestBoth
+                              ? 'ring-2 ring-orange-500  '
+                              : hasLowestLpa
+                              ? 'border-orange-500 ring-2 ring-orange-500'
+                              : hasLowestBrakePower
+                                ? 'border-green-500 ring-2 ring-green-500'
+                              : 'border-[#93C5FD] ring-2 ring-[#93C5FD]'
+                            : isLowestBoth
+                              ? ''
+                              : hasLowestLpa
+                              ? 'border-orange-500 '
+                              : hasLowestBrakePower
+                                ? 'border-green-500'
+                              : 'border-[#E5EDFF]'
+                        }`}
+                        style={isLowestBoth ? { borderImage: 'linear-gradient(135deg, #F97316, #22C55E) 1' } : undefined}
                       >
                         <div className="text-[#1E3A8A] font-medium">
                           Model: {(fanCategory === 'axial' ? getAxialTypeDisplayCode(axialType) : series) || ''} - {r.model?.name}
@@ -3066,7 +3129,7 @@ console.log('working point not loaded', error);
                           ) : hasPoints ? (
                             <div className="text-xs text-green-600 flex items-center gap-1">
                               <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                              Curve loaded
+                             loaded
                             </div>
                           ) : selectedIndex === originalIdx ? (
                             <div className="text-xs text-[#64748B]">Click to load curve</div>
@@ -3312,8 +3375,8 @@ console.log('working point not loaded', error);
                       ) {
                         // Filter variants based on selected series
                         const filteredVariants = dimensionsData.variants.filter(variant => {
-                          if (series === 'NBR-D FAN SECTION TYPE (NBC)' || series === 'NBS-D FAN SECTION TYPE (NBC)') {
-                            return variant.name.includes('Fan Section Type');
+                          if (series === 'NBR-D (NBC)' || series === 'NBS-D (NBC)') {
+                            return variant.name.includes('NBC');
                           }
                           if (series === 'NBR-D' || series === 'NBS-D') {
                             return variant.name.includes('Dimensions'); // Show only Dimensions variant for NBR-D/NBS-D
@@ -3408,9 +3471,12 @@ console.log('working point not loaded', error);
                           })()
                         : null;
 
-                      const dimensionsDisplayName = axialType === 'NETD_FR'
-                        ? 'Axial wall mounted (Fire Rated) (NETD) (400°C / 2hrs)'
-                        : dimensionsData.name;
+                      const dimensionsDisplayName =
+                        ['NEIDS1', 'NEIDS', 'NEIDS3'].includes(axialType)
+                          ? getAxialTypeDisplayName(axialType)
+                          : (axialType === 'NETD_FR'
+                            ? 'Axial wall mounted (Fire Rated) (NETD) (400°C / 2hrs)'
+                            : dimensionsData.name);
 
                       return (
                         <div className="space-y-6">

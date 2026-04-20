@@ -639,7 +639,7 @@ export const dimensionsData = {
     name: "Centrifugal DIDW (NBR-D)",
     variants: [
       {
-        name: "NBR-D Fan Section Type",
+        name: "NBR-D (NBC)",
         image: "/src/assets/dimensions/fanSection.jpg",
         data: [
           { model: "310", A: 930, B: 992, C: 930, D: 459, E: 372 },
@@ -723,7 +723,7 @@ export const dimensionsData = {
     name: "Centrifugal DIDW (NBS-D)",
     variants: [
       {
-        name: "NBS-D Fan Section Type",
+        name: "NBS-D (NBC)",
         image: "/src/assets/dimensions/fanSection.jpg",
         data: [
           { model: "310", A: 1020, B: 1088, C: 1020, D: 452, E: 337 },
