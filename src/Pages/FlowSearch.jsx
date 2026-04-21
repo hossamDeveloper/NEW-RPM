@@ -3071,7 +3071,7 @@ console.log('working point not loaded', error);
                       Lowest Brake Power
                     </span>
                     <span className="inline-flex items-center gap-1 text-[#334155]">
-                      <span className="w-3 h-3 rounded bg-gradient-to-r from-orange-500 to-green-500"></span>
+                      <span className="w-3 h-3 rounded bg-blue-700"></span>
                       Lowest LPA + BP
                     </span>
                     <span className="inline-flex items-center gap-1 text-[#334155]">
@@ -3097,24 +3097,24 @@ console.log('working point not loaded', error);
                       <button 
                         key={originalIdx} 
                         onClick={() => handleModelSelect(originalIdx)} 
-                        className={`text-left p-3 rounded border transition-all ${
+                        className={`text-left p-3 rounded border-3 transition-all ${
                           selectedIndex===originalIdx
                             ? isLowestBoth
-                              ? 'ring-2 ring-orange-500  '
+                              ? 'ring-2 ring-blue-700 border-blue-700 '
                               : hasLowestLpa
                               ? 'border-orange-500 ring-2 ring-orange-500'
                               : hasLowestBrakePower
                                 ? 'border-green-500 ring-2 ring-green-500'
                               : 'border-[#93C5FD] ring-2 ring-[#93C5FD]'
                             : isLowestBoth
-                              ? ''
+                              ? 'border-blue-700'
                               : hasLowestLpa
                               ? 'border-orange-500 '
                               : hasLowestBrakePower
                                 ? 'border-green-500'
                               : 'border-[#E5EDFF]'
                         }`}
-                        style={isLowestBoth ? { borderImage: 'linear-gradient(135deg, #F97316, #22C55E) 1' } : undefined}
+                      
                       >
                         <div className="text-[#1E3A8A] font-medium">
                           Model: {(fanCategory === 'axial' ? getAxialTypeDisplayCode(axialType) : series) || ''} - {r.model?.name}
