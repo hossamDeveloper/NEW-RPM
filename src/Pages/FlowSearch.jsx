@@ -251,9 +251,9 @@ const FlowSearch = () => {
     { code: 'NEI3D', label: 'Axial box inline (NEI3D)' },
     { code: 'NEI3D_FR', label: 'Axial box inline Fire Rated (NEI3D_FR) (400°C / 2hrs)'},
     { code: 'NRT', label: 'Axial roof top (NRA)' },
-    { code: 'NEIDS1', label: 'Axial fire rated (NEID_FR1) (400°C / 2hrs)', imageKey: 'NEIDS1' },
-    { code: 'NEIDS', label: 'Axial fire rated (NEID_FR2) (400°C / 2hrs)', imageKey: 'NEIDS2' },
-    { code: 'NEIDS3', label: 'Axial fire rated (NEID_FR3) (400°C / 2hrs)', imageKey: 'NEIDS3' },
+    // { code: 'NEIDS1', label: 'Axial fire rated (NEID_FR1) (400°C / 2hrs)', imageKey: 'NEIDS1' },
+    { code: 'NEIDS', label: 'Axial fire rated (NEID_FR1) (400°C / 2hrs)', imageKey: 'NEIDS2' },
+    { code: 'NEIDS3', label: 'Axial fire rated (NEID_FR2) (400°C / 2hrs)', imageKey: 'NEIDS3' },
     { code: 'NEID', label: 'Axial ducted (NEID)' },
     { code: 'NETD', label: 'Axial wall mounted  (NETD)' },
     { code: 'NETD_FR', label: 'Axial wall mounted Fire Rated (NETD_FR) (400°C / 2hrs)' },
@@ -413,9 +413,9 @@ const FlowSearch = () => {
   const getAxialTypeDisplayCode = (code) => {
     if (!code) return '';
     if (code === 'NRT') return 'NRA';
-    if (code === 'NEIDS1') return 'NEID_FR1';
-    if (code === 'NEIDS') return 'NEID_FR2';
-    if (code === 'NEIDS3') return 'NEID_FR3';
+    // if (code === 'NEIDS1') return 'NEID_FR1';
+    if (code === 'NEIDS') return 'NEID_FR1';
+    if (code === 'NEIDS3') return 'NEID_FR2';
     return code;
   };
   const getAxialTypeDisplayName = (code) => {
