@@ -2631,7 +2631,8 @@ console.log('working point not loaded', error);
     if (fanCategory === 'axial') {
       // Map special UI-only axial types to real dimension keys
       if (axialType === 'HIGH_RANGE') return 'NEIDS';
-      if (['NEIDS1', 'NEIDS3'].includes(axialType)) return 'NEIDS';
+      if (axialType === 'NEIDS1') return 'NEIDS';
+      if (axialType === 'NEIDS3') return 'NEID_FR2';
       if (axialType === 'NETD_FR') return 'NETD';
       return axialType || null;
     }
@@ -2651,6 +2652,9 @@ console.log('working point not loaded', error);
   const getCurrentDimensionsData = () => {
     const typeKey = getCurrentDimensionsType();
     if (!typeKey || !selected?.model?.name) return null;
+    if (axialType === 'NEIDS3') {
+      return dimensionsData['NEID_FR2'] || null;
+    }
     // For types with multiple variants (e.g., NEID, NBR, NBS, NBRS, NBR-D, NBS-D, NPD, NPE, NPF), return the full type with variants
     if (
       typeKey === 'NBR' ||
@@ -3466,7 +3470,15 @@ console.log('working point not loaded', error);
                             const key = getBaseModelNumber(modelName) || modelName;
                             return dimensionsData.data.find(row => {
                               const rowModel = String(row?.model || '');
-                              return rowModel === key || rowModel.includes(key) || key.includes(rowModel);
+                              const rowKey = getBaseModelNumber(rowModel) || rowModel;
+                              return (
+                                rowModel === key ||
+                                rowModel.includes(key) ||
+                                key.includes(rowModel) ||
+                                rowKey === key ||
+                                rowKey.includes(key) ||
+                                key.includes(rowKey)
+                              );
                             });
                           })()
                         : null;
