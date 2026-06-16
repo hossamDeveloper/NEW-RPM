@@ -453,8 +453,10 @@ const FlowSearch = () => {
     fanCategory === 'axial' &&
     (isJetFan || isNeidsFamily || ['NEI3D', 'NEI3D_FR', 'NRT', 'NRA', 'NETD', 'NETD_FR'].includes(axialType));
   
-  // Check if it's NBR-D  or NBS-D 
-  const isFanSectionType = series === 'NBR-D (NBC)' || series === 'NBS-D  (NBC)';
+  // Check if it's NBR-D or NBS-D (NBC)
+  const isFanSectionType = series === 'NBR-D (NBC)' || series === 'NBS-D (NBC)' || series === 'NBS-D  (NBC)';
+  const isNbcDidwSeries = isFanSectionType;
+  const nbcDidwSectionTitle = series?.includes('NBR-D') ? 'NBR-D (NBC)' : 'NBS-D (NBC)';
   
   // Some axial/centrifugal types allow only direct drive modes.
   // - Axial roof top (NRA) is internally `NRT`
@@ -2458,7 +2460,7 @@ console.log('working point not loaded', error);
             dims.variants
           ) {
             const filteredVariants = dims.variants.filter(variant => {
-              if (series === 'NBR-D (NBC)' || series === 'NBS-D (NBC)') return variant.name.includes('');
+              if (isNbcDidwSeries) return true;
               if (series === 'NBR-D' || series === 'NBS-D') return variant.name.includes('Dimensions');
               if (axialType === 'NEID') {
                 // Do not filter NEID variants by model name; include all and pick row per variant later
@@ -2467,11 +2469,18 @@ console.log('working point not loaded', error);
               return true;
             });
 
-            for (const variant of filteredVariants) {
-              if (y + 250 > pageHeight - 40) { doc.addPage(); y = 40; }
+            for (let variantIndex = 0; variantIndex < filteredVariants.length; variantIndex++) {
+              const variant = filteredVariants[variantIndex];
+              if (isNbcDidwSeries && variantIndex > 0) {
+                doc.addPage();
+                y = 40;
+              } else if (y + 250 > pageHeight - 40) {
+                doc.addPage();
+                y = 40;
+              }
               doc.setFontSize(12);
               doc.setTextColor('#1e3a8a');
-              doc.text(variant.name, 40, y);
+              doc.text(isNbcDidwSeries ? nbcDidwSectionTitle : variant.name, 40, y);
               y += 15;
 
               const dataSectionTop = y;
@@ -2617,7 +2626,7 @@ console.log('working point not loaded', error);
         }
       }
 
-      doc.save(`technical-submittal-${selectedModel || 'selection'}.pdf`);
+      doc.save(`${axialType || series } - ${selectedModel || 'selection'}.pdf`);
       setShowPdfModal(false);
     } catch (error) {
       console.error('PDF generation error:', error);
@@ -2641,7 +2650,7 @@ console.log('working point not loaded', error);
       if (String(series) === 'NBS') return 'NBS';
       if (String(series) === 'NBRS') return 'NBRS';
       if (series === 'NBR-D' || series === 'NBR_D' || series === 'NBR-D (NBC)') return 'NBR_D';
-      if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D (NBC)') return 'NBS_D';
+      if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D (NBC)' || series === 'NBS-D  (NBC)') return 'NBS_D';
       if (String(series) === 'NPD') return 'NPD';
       if (String(series) === 'NPE') return 'NPE';
       if (String(series) === 'NPF') return 'NPF';
@@ -3379,9 +3388,7 @@ console.log('working point not loaded', error);
                       ) {
                         // Filter variants based on selected series
                         const filteredVariants = dimensionsData.variants.filter(variant => {
-                          if (series === 'NBR-D (NBC)' || series === 'NBS-D (NBC)') {
-                            return variant.name.includes('NBC');
-                          }
+                          if (isNbcDidwSeries) return true;
                           if (series === 'NBR-D' || series === 'NBS-D') {
                             return variant.name.includes('Dimensions'); // Show only Dimensions variant for NBR-D/NBS-D
                           }
@@ -3411,7 +3418,9 @@ console.log('working point not loaded', error);
                                 <div key={variantIndex} className="space-y-4">
                                   {/* Variant Title and Content */}
                                   <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                                    <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">{variant.name}</h3>
+                                    <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">
+                                      {isNbcDidwSeries ? nbcDidwSectionTitle : variant.name}
+                                    </h3>
                                     
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                       {/* Image */}
@@ -3419,7 +3428,7 @@ console.log('working point not loaded', error);
                                         <div className="flex justify-center">
                                           <ProgressiveImage 
                                             src={resolveUiImage(variant.image)} 
-                                            alt={variant.name}
+                                            alt={isNbcDidwSeries ? nbcDidwSectionTitle : variant.name}
                                             className="max-w-full h-auto max-h-96 object-cover"
                                             loading="lazy"
                                             decoding="async"
