@@ -899,12 +899,10 @@ const FlowSearch = () => {
   // Robust matcher to find the dimensions row for a given model name across naming variations
   const findDimensionsRowMatch = (rows, modelName) => {
     if (!Array.isArray(rows) || !modelName) return null;
+
     const full = String(modelName || '');
-    const modelNumber = full.replace(/^[A-Z-]+\s*/i, '').trim();
     const base = getBaseModelNumber(full);
-    const digitsOnly = (full.match(/\d+/)?.[0]) || '';
-    const preMMatch = full.match(/(\d+)\s*M\d+/i);
-    const preMNumber = preMMatch ? preMMatch[1] : null;
+    const wantsHighRange = /\d+\s*H/i.test(full);
 
     const normalize = (s) => String(s || '')
       .toLowerCase()
@@ -912,42 +910,41 @@ const FlowSearch = () => {
       .replace(/[_-]/g, '');
 
     const normFull = normalize(full);
-    const normModelNumber = normalize(modelNumber);
+    const normWithoutPrefix = normalize(full.replace(/^[A-Z-]+\s*/i, '').trim());
+    const rowHasHighRange = (rowModel) => /\d+\s*H/i.test(String(rowModel || ''));
 
-    // Extract all numbers from model name for exact matching
-    const allNumbers = full.match(/\d+/g) || [];
-    const exactNumberMatch = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : null; // Use last number (usually the model number)
+    const scoreRow = (row) => {
+      const rowModel = String(row?.model || '');
+      const rowBase = getBaseModelNumber(rowModel);
+      const rowNorm = normalize(rowModel);
+      const rowNormWithoutPrefix = normalize(rowModel.replace(/^[A-Z-]+\s*/i, '').trim());
 
-    // Priority order of strategies
-    const strategies = [
-      (row) => normalize(row.model) === normFull,
-      (row) => normalize(row.model) === normModelNumber,
-      // Exact number match - check if row.model contains the exact number as a standalone value
-      (row) => {
-        if (!exactNumberMatch) return false;
-        const rowModelStr = String(row.model || '');
-        // Check for exact number match (not substring)
-        const rowNumbers = rowModelStr.match(/\d+/g) || [];
-        return rowNumbers.some(num => num === exactNumberMatch);
-      },
-      (row) => normalize(row.model).includes(normFull) || normFull.includes(normalize(row.model)),
-      (row) => normalize(row.model).includes(normModelNumber) || normModelNumber.includes(normalize(row.model)),
-      (row) => base && String(row.model || '').includes(base),
-      (row) => preMNumber && String(row.model || '').includes(preMNumber),
-      // Last resort: check if digitsOnly matches exactly as a number in row.model
-      (row) => {
-        if (!digitsOnly) return false;
-        const rowModelStr = String(row.model || '');
-        const rowNumbers = rowModelStr.match(/\d+/g) || [];
-        return rowNumbers.some(num => num === digitsOnly);
-      },
-    ];
+      if (rowNorm === normFull) return 1000;
+      if (rowNormWithoutPrefix === normWithoutPrefix) return 950;
 
-    for (const test of strategies) {
-      const hit = rows.find((row) => test(row));
-      if (hit) return hit;
+      if (!base || !rowBase || rowBase !== base) return -1;
+
+      let score = 500;
+      const rowHigh = rowHasHighRange(rowModel);
+      if (wantsHighRange && rowHigh) score += 100;
+      else if (wantsHighRange && !rowHigh) score -= 40;
+      else if (!wantsHighRange && !rowHigh) score += 20;
+
+      if (normFull.includes(rowNorm) || rowNorm.includes(normFull)) score += 10;
+      return score;
+    };
+
+    let best = null;
+    let bestScore = -1;
+    for (const row of rows) {
+      const score = scoreRow(row);
+      if (score > bestScore) {
+        bestScore = score;
+        best = row;
+      }
     }
-    return null;
+
+    return bestScore > 0 ? best : null;
   };
 
   // Robust outlier filtering for curve points using rolling median + MAD
@@ -3474,22 +3471,7 @@ console.log('working point not loaded', error);
 
                       // Regular handling for other types
                       const selectedModelData = Array.isArray(dimensionsData.data)
-                        ? (() => {
-                            const modelName = selected?.model?.name || '';
-                            const key = getBaseModelNumber(modelName) || modelName;
-                            return dimensionsData.data.find(row => {
-                              const rowModel = String(row?.model || '');
-                              const rowKey = getBaseModelNumber(rowModel) || rowModel;
-                              return (
-                                rowModel === key ||
-                                rowModel.includes(key) ||
-                                key.includes(rowModel) ||
-                                rowKey === key ||
-                                rowKey.includes(key) ||
-                                key.includes(rowKey)
-                              );
-                            });
-                          })()
+                        ? findDimensionsRowMatch(dimensionsData.data, selected?.model?.name || '')
                         : null;
 
                       const dimensionsDisplayName =
