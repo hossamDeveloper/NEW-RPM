@@ -1717,13 +1717,14 @@ const FlowSearch = () => {
       const rightX = 260;
       const lines = [
         '14th Helmy Abd El Aty St. Eight Zone, Nasr City, Cairo, Egypt',
+        'www.nobeleng.com',
         'E-mail: nobeleng@yahoo.com',
         'Tel&Fax: (00202)22718121 - (00202)22718125',
         'Customer service : (+2) 01065000130 – (+2) 01065000128',
         'Factories : Industrial area Anshas road in front of Abaza factory.'
       ];
       lines.forEach((t, i) => doc.text(t, rightX, y + 14 + i * 14));
-      y += 100;
+      y += 110;
 
       // Title
       doc.setFontSize(16);
