@@ -402,7 +402,7 @@ export const dimensionsData = {
       variants: [
         {
           name: "NBR Dimensions",
-          image: "/src/assets/dimensions/NBR1.jpeg",
+          image: "/src/assets/dimensions/NBR111.jpeg",
           data: [
             { model: "310", A: 330, B: 335, C: 243, D_cl_1a: 300, D_cl_2a: 377, E: 30, F_cl_1a: 480, F_cl_2a: 574, G: 182, H: 182, L: 402, M: 140, N_cl_1a: 180, N_cl_2a: 257, P: 189, Q: 211, R: 12, S_cl_1a: 24, S_cl_2a: 32, T_cl_1a: 60, T_cl_2a: 110, V_cl_1a: 27, V_cl_2a: 35.5, Z_cl_1a: 8, Z_cl_2a: 10 },
             { model: "340", A: 366, B: 369, C: 271, D_cl_1a: 300, D_cl_2a: 377, E: 30, F_cl_1a: 516, F_cl_2a: 618, G: 196, H: 196, L: 446, M: 154, N_cl_1a: 180, N_cl_2a: 257, P: 211, Q: 235, R: 12, S_cl_1a: 28, S_cl_2a: 38, T_cl_1a: 80, T_cl_2a: 110, V_cl_1a: 31, V_cl_2a: 41.5, Z_cl_1a: 8, Z_cl_2a: 10 },
@@ -498,7 +498,7 @@ export const dimensionsData = {
       variants: [
         {
           name: "NBS Dimensions",
-          image: "/src/assets/dimensions/NBR1.jpeg",
+          image: "/src/assets/dimensions/NBR111.jpeg",
           data: [
             { model: "310", A: 330, B: 335, C: 243, D_cl_1a: 300, D_cl_2a: 377, E: 30, F_cl_1a: 480, F_cl_2a: 574, G: 182, H: 182, L: 402, M: 140, N_cl_1a: 180, N_cl_2a: 257, P: 189, Q: 211, R: 12, S_cl_1a: 24, S_cl_2a: 32, T_cl_1a: 60, T_cl_2a: 110, V_cl_1a: 27, V_cl_2a: 35.5, Z_cl_1a: 8, Z_cl_2a: 10 },
             { model: "340", A: 366, B: 369, C: 271, D_cl_1a: 300, D_cl_2a: 377, E: 30, F_cl_1a: 516, F_cl_2a: 618, G: 196, H: 196, L: 446, M: 154, N_cl_1a: 180, N_cl_2a: 257, P: 211, Q: 235, R: 12, S_cl_1a: 28, S_cl_2a: 38, T_cl_1a: 80, T_cl_2a: 110, V_cl_1a: 31, V_cl_2a: 41.5, Z_cl_1a: 8, Z_cl_2a: 10 },

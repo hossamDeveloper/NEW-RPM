@@ -2012,7 +2012,7 @@ console.log('working point not loaded', error);
           }
         } else if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBS' || typeKeyForPdf === 'NBRS' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
           // Use full object with variants for NBR, NBS, NBRS, NBR-D, and NBS-D
-          dims = dimensionsData[typeKeyForPdf] || null;
+          dims = getDimensionsForType(typeKeyForPdf);
         } else if (typeKeyForPdf) {
           dims = getDimensionsData(typeKeyForPdf, selected?.model?.name);
         }
@@ -2424,7 +2424,7 @@ console.log('working point not loaded', error);
               || getDimensionsData(typeKeyForPdf);
           }
         } else if (typeKeyForPdf === 'NBR' || typeKeyForPdf === 'NBS' || typeKeyForPdf === 'NBRS' || typeKeyForPdf === 'NBR_D' || typeKeyForPdf === 'NBS_D') {
-          dims = dimensionsData[typeKeyForPdf] || null;
+          dims = getDimensionsForType(typeKeyForPdf);
         } else if (typeKeyForPdf) {
           dims = getDimensionsData(typeKeyForPdf, fullModelNameForPdf) || (preMNumberPdf ? getDimensionsData(typeKeyForPdf, preMNumberPdf) : null);
         }
@@ -2656,13 +2656,39 @@ console.log('working point not loaded', error);
     return null;
   };
 
-  const getCurrentDimensionsData = () => {
-    const typeKey = getCurrentDimensionsType();
-    if (!typeKey || !selected?.model?.name) return null;
+  const isDirectDriveSelected = () =>
+    driveType === 'DIRECT_DRIVE' || driveType === 'DIRECT_DRIVE_WITH_FREQUENCY_DRIVE';
+
+  // NBR/NBS: direct drive → NBR1.jpeg + NBRS data; belt drive → NBR111.jpeg + original data
+  const applyNbrNbsDirectDriveFirstVariant = (dims, typeKey) => {
+    if (!dims?.variants?.length) return dims;
+    if (typeKey !== 'NBR' && typeKey !== 'NBS') return dims;
+
+    if (!isDirectDriveSelected()) return dims;
+
+    const nbrsFirstVariant = dimensionsData.NBRS?.variants?.[0];
+    if (!nbrsFirstVariant) return dims;
+
+    return {
+      ...dims,
+      variants: dims.variants.map((variant, index) =>
+        index === 0
+          ? {
+              ...variant,
+              image: nbrsFirstVariant.image,
+              data: nbrsFirstVariant.data,
+              columns: nbrsFirstVariant.columns,
+            }
+          : variant
+      ),
+    };
+  };
+
+  const getDimensionsForType = (typeKey) => {
+    if (!typeKey) return null;
     if (axialType === 'NEIDS3') {
       return dimensionsData['NEID_FR2'] || null;
     }
-    // For types with multiple variants (e.g., NEID, NBR, NBS, NBRS, NBR-D, NBS-D, NPD, NPE, NPF), return the full type with variants
     if (
       typeKey === 'NBR' ||
       typeKey === 'NBS' ||
@@ -2673,16 +2699,22 @@ console.log('working point not loaded', error);
       typeKey === 'NPE' ||
       typeKey === 'NPF'
     ) {
-      return dimensionsData[typeKey] || null;
+      const base = dimensionsData[typeKey] || null;
+      return applyNbrNbsDirectDriveFirstVariant(base, typeKey);
     }
-    // For NEID: use NEID_DIRECT for DIRECT_DRIVE/DIRECT_DRIVE_WITH_FREQUENCY_DRIVE, otherwise NEID (BELT_DRIVE)
     if (axialType === 'NEID') {
-      if (driveType === 'DIRECT_DRIVE' || driveType === 'DIRECT_DRIVE_WITH_FREQUENCY_DRIVE') {
+      if (isDirectDriveSelected()) {
         return dimensionsData['NEID_DIRECT'] || null;
       }
       return dimensionsData['NEID'] || null;
     }
-    return getDimensionsData(typeKey, selected.model.name);
+    return dimensionsData[typeKey] || null;
+  };
+
+  const getCurrentDimensionsData = () => {
+    const typeKey = getCurrentDimensionsType();
+    if (!typeKey || !selected?.model?.name) return null;
+    return getDimensionsForType(typeKey) || getDimensionsData(typeKey, selected.model.name);
   };
 
   // Image cache for resolved URLs

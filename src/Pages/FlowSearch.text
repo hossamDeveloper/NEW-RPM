@@ -20,7 +20,8 @@ import annotationPlugin from 'chartjs-plugin-annotation';
 import { useMutation } from '@tanstack/react-query';
 import api from '../redux/api';
 import logoImg from '../assets/logo.png';
-import wireImg from '../assets/wired.jpeg';
+import wireImg1 from '../assets/wiring1.png';
+import wireImg2 from '../assets/wiring2.jpeg';
 import { dimensionsData, getDimensionsData, getModelDimensions } from "../Data/dimensions.js";
 import { getDescription } from "../Data/descriptions.js";
 
@@ -130,8 +131,8 @@ const FlowSearch = () => {
     if (!code) return undefined;
     const wanted = String(code).trim().toUpperCase();
     let aliasWanted = wanted;
-    if (wanted.includes('FAN SECTION TYPE')) {
-      aliasWanted = wanted.includes('NBR-D') ? 'NBR-D FAN SECTION TYPE (NBC)' : (wanted.includes('NBS-D') ? 'NBS-D FAN SECTION TYPE (NBC)' : wanted);
+    if (wanted.includes('NBC')) {
+      aliasWanted = wanted.includes('NBR-D') ? 'NBR-D (NBC)' : (wanted.includes('NBS-D') ? 'NBS-D  (NBC)' : wanted);
     }
 
     // Helper to get filename without extension in UPPERCASE
@@ -248,9 +249,11 @@ const FlowSearch = () => {
   const axialCatalog = [
     // { code: 'NEI2D', label: 'Axial jet fan (NEI2D)' }, // Hidden temporarily
     { code: 'NEI3D', label: 'Axial box inline (NEI3D)' },
-    { code: 'NEI3D_FR', label: 'Axial box inline Fire Rated (NEI3D_FR)'},
+    { code: 'NEI3D_FR', label: 'Axial box inline Fire Rated (NEI3D_FR) (400°C / 2hrs)'},
     { code: 'NRT', label: 'Axial roof top (NRA)' },
-    { code: 'NEIDS', label: 'Axial fire rated (NEIDS) (400°C / 2hrs)' },
+    // { code: 'NEIDS1', label: 'Axial fire rated (NEID_FR1) (400°C / 2hrs)', imageKey: 'NEIDS1' },
+    { code: 'NEIDS', label: 'Axial fire rated (NEID_FR1) (400°C / 2hrs)', imageKey: 'NEIDS2' },
+    { code: 'NEIDS3', label: 'Axial fire rated (NEID_FR2) (400°C / 2hrs)', imageKey: 'NEIDS3' },
     { code: 'NEID', label: 'Axial ducted (NEID)' },
     { code: 'NETD', label: 'Axial wall mounted  (NETD)' },
     { code: 'NETD_FR', label: 'Axial wall mounted Fire Rated (NETD_FR) (400°C / 2hrs)' },
@@ -276,7 +279,7 @@ const FlowSearch = () => {
   const getSeriesOptions = () => {
     if (pressureClass === 'low') {
       if (lowConfig === 'sisw') return ['NBR', 'NBS', 'NBRS'];
-      if (lowConfig === 'didw') return ['NBR-D', 'NBS-D', 'NBR-D FAN SECTION TYPE (NBC)', 'NBS-D FAN SECTION TYPE (NBC)'];
+      if (lowConfig === 'didw') return ['NBR-D', 'NBS-D', 'NBR-D (NBC)', 'NBS-D (NBC)'];
       return [];
     }
     if (pressureClass === 'medium') return ['NPD', 'NPE'];
@@ -292,13 +295,13 @@ const FlowSearch = () => {
       'NBRS',
       'NBR-D',
       'NBS-D',
-      'NBR-D FAN SECTION TYPE (NBC)',
-      'NBS-D FAN SECTION TYPE (NBC)',
+      'NBR-D (NBC)',
+      'NBS-D (NBC)',
       'NPD',
       'NPE',
       'NPF'
     ].filter(s => !hiddenCentrifugalSeries.includes(s));
-    //return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP', 'NBR-D', 'NBS-D', 'NBR-D FAN SECTION TYPE', 'NBS-D FAN SECTION TYPE', 'NPD', 'NPE', 'NPF'];
+    //return ['NBR', 'NBS', 'NBRS', 'NC', 'NBXI', 'NP', 'NBR-D', 'NBS-D', 'NBR-D ', 'NBS-D ', 'NPD', 'NPE', 'NPF'];
   };
   
   const seriesCards = getAllSeriesOptions().map(s => ({
@@ -395,10 +398,12 @@ const FlowSearch = () => {
   };
 
   const isJetFan = axialType === 'NEI2D';
+  const isNeidsFamily = ['NEIDS1', 'NEIDS', 'NEIDS3'].includes(axialType);
 
   // Map special axial types to the effective backend type (for API payloads, dimensions, etc.)
   const getEffectiveAxialType = () => {
     if (axialType === 'HIGH_RANGE') return 'NEIDS';
+    if (isNeidsFamily) return 'NEIDS';
     if (axialType === 'NEI3D_FR') return 'NEI3D';
     if (axialType === 'NETD_FR') return 'NETD';
     return axialType;
@@ -408,7 +413,15 @@ const FlowSearch = () => {
   const getAxialTypeDisplayCode = (code) => {
     if (!code) return '';
     if (code === 'NRT') return 'NRA';
+    // if (code === 'NEIDS1') return 'NEID_FR1';
+    if (code === 'NEIDS') return 'NEID_FR1';
+    if (code === 'NEIDS3') return 'NEID_FR2';
     return code;
+  };
+  const getAxialTypeDisplayName = (code) => {
+    if (!code) return '';
+    const match = axialCatalog.find(item => item.code === code);
+    return match?.label || code;
   };
 
   // LPA distance handling:
@@ -438,13 +451,25 @@ const FlowSearch = () => {
   // Hide BELT_DRIVE for specific axial models only
   const beltHidden =
     fanCategory === 'axial' &&
-    (isJetFan || ['NEI3D', 'NEI3D_FR', 'NRA', 'NEIDS', 'NETD', 'NETD_FR'].includes(axialType));
+    (isJetFan || isNeidsFamily || ['NEI3D', 'NEI3D_FR', 'NRT', 'NRA', 'NETD', 'NETD_FR'].includes(axialType));
   
-  // Check if it's NBR-D FAN SECTION TYPE or NBS-D FAN SECTION TYPE
-  const isFanSectionType = series === 'NBR-D FAN SECTION TYPE (NBC)' || series === 'NBS-D FAN SECTION TYPE (NBC)';
+  // Check if it's NBR-D or NBS-D (NBC)
+  const isFanSectionType = series === 'NBR-D (NBC)' || series === 'NBS-D (NBC)' || series === 'NBS-D  (NBC)';
+  const isNbcDidwSeries = isFanSectionType;
+  const nbcDidwSectionTitle = series?.includes('NBR-D') ? 'NBR-D (NBC)' : 'NBS-D (NBC)';
   
+  // Some axial/centrifugal types allow only direct drive modes.
+  // - Axial roof top (NRA) is internally `NRT`
+  // - Centrifugal fire rated (NBRS) is internally `NBRS`
+  const isDirectDriveOnly = (fanCategory === 'axial' && (axialType === 'NRT' || axialType === 'NRA')) ||
+    (fanCategory === 'centrifugal' && series === 'NBRS');
+
+  const directDriveOptions = ['DIRECT_DRIVE', 'DIRECT_DRIVE_WITH_FREQUENCY_DRIVE'];
+
   const driveOptions = isFanSectionType 
-    ? ['BELT_DRIVE'] // Only BELT_DRIVE for Fan Section Type
+    ? ['BELT_DRIVE'] // Only BELT_DRIVE for 
+    : isDirectDriveOnly
+      ? directDriveOptions
     : [
         'DIRECT_DRIVE',
         ...(beltHidden ? [] : ['BELT_DRIVE']),
@@ -458,7 +483,13 @@ const FlowSearch = () => {
     }
   }, [beltHidden, driveType, isFanSectionType]);
 
-  // Auto-set driveType to BELT_DRIVE when Fan Section Type is selected
+  useEffect(() => {
+    if (!isFanSectionType && isDirectDriveOnly && !directDriveOptions.includes(driveType)) {
+      setDriveType('DIRECT_DRIVE');
+    }
+  }, [isDirectDriveOnly, driveType, isFanSectionType]);
+
+  // Auto-set driveType to BELT_DRIVE when  is selected
   useEffect(() => {
     if (isFanSectionType && driveType !== 'BELT_DRIVE') {
       setDriveType('BELT_DRIVE');
@@ -480,8 +511,8 @@ const FlowSearch = () => {
   // Normalize series aliases to canonical codes for logic/API
   const normalizeSeries = (val) => {
     const s = String(val || '').trim().toUpperCase();
-    if (s === 'NBR-D FAN SECTION TYPE (NBC)') return 'NBR-D';
-    if (s === 'NBS-D FAN SECTION TYPE (NBC)') return 'NBS-D';
+    if (s === 'NBR-D (NBC)') return 'NBR-D';
+    if (s === 'NBS-D (NBC)') return 'NBS-D';
     return s;
   };
 
@@ -842,7 +873,7 @@ const FlowSearch = () => {
     if (fanCategory !== 'axial' || !axialType) return results;
 
     const shouldFilter =
-      axialType === 'NEIDS' ||
+      isNeidsFamily ||
       axialType === 'NEID' ||
       axialType === 'HIGH_RANGE';
     if (!shouldFilter) return results;
@@ -855,7 +886,7 @@ const FlowSearch = () => {
       // If we can't parse a model number, drop it from these restricted views
       if (!modelNumber) return false;
 
-      if (axialType === 'NEIDS' || axialType === 'NEID') {
+      if (isNeidsFamily || axialType === 'NEID') {
         return modelNumber <= 2240;
       }
       if (axialType === 'HIGH_RANGE') {
@@ -868,12 +899,10 @@ const FlowSearch = () => {
   // Robust matcher to find the dimensions row for a given model name across naming variations
   const findDimensionsRowMatch = (rows, modelName) => {
     if (!Array.isArray(rows) || !modelName) return null;
+
     const full = String(modelName || '');
-    const modelNumber = full.replace(/^[A-Z-]+\s*/i, '').trim();
     const base = getBaseModelNumber(full);
-    const digitsOnly = (full.match(/\d+/)?.[0]) || '';
-    const preMMatch = full.match(/(\d+)\s*M\d+/i);
-    const preMNumber = preMMatch ? preMMatch[1] : null;
+    const wantsHighRange = /\d+\s*H/i.test(full);
 
     const normalize = (s) => String(s || '')
       .toLowerCase()
@@ -881,42 +910,41 @@ const FlowSearch = () => {
       .replace(/[_-]/g, '');
 
     const normFull = normalize(full);
-    const normModelNumber = normalize(modelNumber);
+    const normWithoutPrefix = normalize(full.replace(/^[A-Z-]+\s*/i, '').trim());
+    const rowHasHighRange = (rowModel) => /\d+\s*H/i.test(String(rowModel || ''));
 
-    // Extract all numbers from model name for exact matching
-    const allNumbers = full.match(/\d+/g) || [];
-    const exactNumberMatch = allNumbers.length > 0 ? allNumbers[allNumbers.length - 1] : null; // Use last number (usually the model number)
+    const scoreRow = (row) => {
+      const rowModel = String(row?.model || '');
+      const rowBase = getBaseModelNumber(rowModel);
+      const rowNorm = normalize(rowModel);
+      const rowNormWithoutPrefix = normalize(rowModel.replace(/^[A-Z-]+\s*/i, '').trim());
 
-    // Priority order of strategies
-    const strategies = [
-      (row) => normalize(row.model) === normFull,
-      (row) => normalize(row.model) === normModelNumber,
-      // Exact number match - check if row.model contains the exact number as a standalone value
-      (row) => {
-        if (!exactNumberMatch) return false;
-        const rowModelStr = String(row.model || '');
-        // Check for exact number match (not substring)
-        const rowNumbers = rowModelStr.match(/\d+/g) || [];
-        return rowNumbers.some(num => num === exactNumberMatch);
-      },
-      (row) => normalize(row.model).includes(normFull) || normFull.includes(normalize(row.model)),
-      (row) => normalize(row.model).includes(normModelNumber) || normModelNumber.includes(normalize(row.model)),
-      (row) => base && String(row.model || '').includes(base),
-      (row) => preMNumber && String(row.model || '').includes(preMNumber),
-      // Last resort: check if digitsOnly matches exactly as a number in row.model
-      (row) => {
-        if (!digitsOnly) return false;
-        const rowModelStr = String(row.model || '');
-        const rowNumbers = rowModelStr.match(/\d+/g) || [];
-        return rowNumbers.some(num => num === digitsOnly);
-      },
-    ];
+      if (rowNorm === normFull) return 1000;
+      if (rowNormWithoutPrefix === normWithoutPrefix) return 950;
 
-    for (const test of strategies) {
-      const hit = rows.find((row) => test(row));
-      if (hit) return hit;
+      if (!base || !rowBase || rowBase !== base) return -1;
+
+      let score = 500;
+      const rowHigh = rowHasHighRange(rowModel);
+      if (wantsHighRange && rowHigh) score += 100;
+      else if (wantsHighRange && !rowHigh) score -= 40;
+      else if (!wantsHighRange && !rowHigh) score += 20;
+
+      if (normFull.includes(rowNorm) || rowNorm.includes(normFull)) score += 10;
+      return score;
+    };
+
+    let best = null;
+    let bestScore = -1;
+    for (const row of rows) {
+      const score = scoreRow(row);
+      if (score > bestScore) {
+        bestScore = score;
+        best = row;
+      }
     }
-    return null;
+
+    return bestScore > 0 ? best : null;
   };
 
   // Robust outlier filtering for curve points using rolling median + MAD
@@ -1423,6 +1451,28 @@ const FlowSearch = () => {
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       let y = 40;
+      const ensureSpace = (neededHeight) => {
+        // Prevent drawing tables/text beyond the current page bottom.
+        if (y + neededHeight > pageHeight - 40) {
+          doc.addPage();
+          y = 40;
+        }
+      };
+      const fitOneLine = (text, maxWidth) => {
+        const s = String(text ?? '');
+        if (!s) return '';
+        if (doc.getTextWidth(s) <= maxWidth) return s;
+        const ellipsis = '…';
+        let lo = 0;
+        let hi = s.length;
+        while (lo < hi) {
+          const mid = Math.ceil((lo + hi) / 2);
+          const candidate = s.slice(0, mid) + ellipsis;
+          if (doc.getTextWidth(candidate) <= maxWidth) lo = mid;
+          else hi = mid - 1;
+        }
+        return s.slice(0, Math.max(0, lo)) + ellipsis;
+      };
 
       // Prefer fetch->blob->FileReader for same-origin built assets
       const loadImageAsBase64 = (imageSrc) => {
@@ -1667,19 +1717,20 @@ const FlowSearch = () => {
       const rightX = 260;
       const lines = [
         '14th Helmy Abd El Aty St. Eight Zone, Nasr City, Cairo, Egypt',
+        'www.nobeleng.com',
         'E-mail: nobeleng@yahoo.com',
         'Tel&Fax: (00202)22718121 - (00202)22718125',
         'Customer service : (+2) 01065000130 – (+2) 01065000128',
         'Factories : Industrial area Anshas road in front of Abaza factory.'
       ];
       lines.forEach((t, i) => doc.text(t, rightX, y + 14 + i * 14));
-      y += 100;
+      y += 110;
 
       // Title
       doc.setFontSize(16);
       doc.setTextColor('#1e3a8a');
       doc.text('Technical Submittal', pageWidth / 2, y, { align: 'center' });
-      y += 40;
+      y += 35;
 
       // Selected info
       doc.setFontSize(12);
@@ -1762,7 +1813,7 @@ const FlowSearch = () => {
         doc.setTextColor('#1e3a8a');
         doc.text('Description', 40, y);
         y += 25;
-        doc.setFontSize(13);
+        doc.setFontSize(10);
         doc.setTextColor('#334155');
         
         // Split description into lines and wrap text
@@ -1773,17 +1824,22 @@ const FlowSearch = () => {
             y = 40;
           }
           doc.text(line, 40, y);
-          y += 16;
+          y += 11;
         });
-        y += 40;
+        y += 20;
       }
 
-         if (closestPoint) {
+    try{
+      if (closestPoint) {
+        // Ensure "Required Point + Working Point" start together:
+        // - if the remaining space on the current page is not enough, move both to the next page
+        // - otherwise keep them on the same page
+        ensureSpace(270);
         doc.setFontSize(13);
         doc.setTextColor('#1e3a8a');
         doc.text('Required Point', 40, y);
         y += 10;
-        doc.setFontSize(12);
+        doc.setFontSize(9);
         doc.setTextColor('#334155');
         const wpRows = [
           ['Flow Rate', `${searchData.flowRate} ${getFlowUnitLabel()}`],
@@ -1797,38 +1853,46 @@ const FlowSearch = () => {
         const rowsPerCol = Math.ceil(wpRows.length / 2);
         const leftRows = wpRows.slice(0, rowsPerCol);
         const rightRows = wpRows.slice(rowsPerCol);
-        // Increase row height to support long labels wrapping to 2 lines
-        // (e.g. "Sound Pressure Level (LPA)"), without overlapping the value.
-        const rowHeight = 36;
+        // Compact single-line rows (no wrapping); truncate with ellipsis if needed.
+        const rowHeight = 20;
         const cellPadding = 8;
         
         const drawCol = (x, startY, rows) => {
           const labelX = x + cellPadding;
-          const valueX = x + cellPadding + 110;
-          // Keep label and value inside their own visual widths.
-          const labelMaxWidth = Math.max(40, valueX - labelX - 6);
-          const valueMaxWidth = Math.max(40, colWidth - (cellPadding + 110) - 6);
-          const lineHeight = 12; // Font size is 12 in this section.
 
           doc.setDrawColor(229, 237, 255);
           doc.setLineWidth(0.5);
-          rows.forEach((row, idx) => {
-            const rowTop = startY + idx * rowHeight;
-            const textY = rowTop + 22;
-            doc.rect(x, rowTop, colWidth, rowHeight);
-            
-            const labelLines = doc.splitTextToSize(`${row[0]}:`, labelMaxWidth);
-            const valueLines = doc.splitTextToSize(String(row[1]), valueMaxWidth);
+          let curY = startY;
+          rows.forEach((row) => {
+            // Special-case: show the full LPA label (allow 2 lines) by increasing only this row's height.
+            const isLpaLabel = String(row?.[0] || '').includes('Sound Pressure Level (LPA)');
+            const valueShift = isLpaLabel ? 145 : 108;
+            const valueX = x + cellPadding + valueShift;
+            const labelMaxWidth = Math.max(40, valueX - labelX - 6);
+            const valueMaxWidth = Math.max(40, colWidth - (valueX - x) - 6);
 
             doc.setFont(undefined, 'bold');
-            labelLines.forEach((line, i) => {
-              doc.text(String(line), labelX, textY + i * lineHeight);
-            });
-            
+            const labelText = `${row[0]}:`;
+            const labelLines = isLpaLabel ? doc.splitTextToSize(labelText, labelMaxWidth) : [fitOneLine(labelText, labelMaxWidth)];
+            const labelLineCount = Math.min(2, Array.isArray(labelLines) ? labelLines.length : 1);
+
+            const effectiveRowHeight = isLpaLabel ? Math.max(rowHeight, 14 + labelLineCount * 10 + 8) : rowHeight;
+            doc.rect(x, curY, colWidth, effectiveRowHeight);
+
+            // Text baseline
+            const firstLineY = curY + 14;
+            if (isLpaLabel) {
+              const linesToDraw = (Array.isArray(labelLines) ? labelLines : [String(labelLines)]).slice(0, 2);
+              linesToDraw.forEach((ln, i) => doc.text(String(ln), labelX, firstLineY + i * 10));
+            } else {
+              doc.text(String(labelLines[0] ?? ''), labelX, firstLineY);
+            }
+
             doc.setFont(undefined, 'normal');
-            valueLines.forEach((line, i) => {
-              doc.text(String(line), valueX, textY + i * lineHeight);
-            });
+            // Keep values single-line (truncate if needed), vertically aligned near first line.
+            doc.text(fitOneLine(String(row[1]), valueMaxWidth), valueX, firstLineY);
+
+            curY += effectiveRowHeight;
           });
         };
         
@@ -1843,7 +1907,7 @@ const FlowSearch = () => {
         doc.setTextColor('#1e3a8a');
         doc.text('Working Point', 40, y);
         y += 10;
-        doc.setFontSize(12);
+        doc.setFontSize(9);
         doc.setTextColor('#334155');
         const wpRows = [
           ['RPM', `${selected?.rpm?.rpm} `],
@@ -1862,47 +1926,74 @@ const FlowSearch = () => {
         const rowsPerCol = Math.ceil(wpRows.length / 2);
         const leftRows = wpRows.slice(0, rowsPerCol);
         const rightRows = wpRows.slice(rowsPerCol);
-        // Increase row height to support long labels wrapping to 2 lines
-        // (e.g. "Sound Pressure Level (LPA)"), without overlapping the value.
-        const rowHeight = 36;
+        // Compact single-line rows (no wrapping); truncate with ellipsis if needed.
+        const rowHeight = 25;
         const cellPadding = 8;
         
         const drawCol = (x, startY, rows) => {
           const labelX = x + cellPadding;
-          const valueX = x + cellPadding + 110;
-          // Keep label and value inside their own visual widths.
-          const labelMaxWidth = Math.max(40, valueX - labelX - 6);
-          const valueMaxWidth = Math.max(40, colWidth - (cellPadding + 110) - 6);
-          const lineHeight = 12; // Font size is 12 in this section.
-
           doc.setDrawColor(229, 237, 255);
           doc.setLineWidth(0.5);
-          rows.forEach((row, idx) => {
-            const rowTop = startY + idx * rowHeight;
-            const textY = rowTop + 16;
-            doc.rect(x, rowTop, colWidth, rowHeight);
-            
-            const labelLines = doc.splitTextToSize(`${row[0]}:`, labelMaxWidth);
-            const valueLines = doc.splitTextToSize(String(row[1]), valueMaxWidth);
+          let curY = startY;
+          rows.forEach((row) => {
+            const labelRaw = String(row?.[0] ?? '');
+            const isLpaLabel = /sound\s*pressure\s*level/i.test(labelRaw) || /\(lpa\)/i.test(labelRaw) || /\blpa\b/i.test(labelRaw);
+
+            // Move value to the right, and allow LPA label to occupy 2 lines (no ellipsis).
+            // For LPA row, reduce the gap to give more width to the value.
+            const valueShift = isLpaLabel ? 122 : 108;
+            const valueX = x + cellPadding + valueShift;
+            const labelMaxWidth = Math.max(40, valueX - labelX - 6);
+            const valueMaxWidth = Math.max(40, colWidth - (valueX - x) - 6);
 
             doc.setFont(undefined, 'bold');
-            labelLines.forEach((line, i) => {
-              doc.text(String(line), labelX, textY + i * lineHeight);
-            });
-            
+            const labelText = `${labelRaw}:`;
+            const labelLines = isLpaLabel
+              ? ['Sound Pressure Level', '(LPA):']
+              : [fitOneLine(labelText, labelMaxWidth)];
+            // Allow LPA value to wrap (up to 2 lines) to avoid truncation.
             doc.setFont(undefined, 'normal');
-            valueLines.forEach((line, i) => {
-              doc.text(String(line), valueX, textY + i * lineHeight);
-            });
+            const valueText = String(row?.[1] ?? '');
+            const valueLines = isLpaLabel ? doc.splitTextToSize(valueText, valueMaxWidth) : [fitOneLine(valueText, valueMaxWidth)];
+            const valueLineCount = Math.min(2, Array.isArray(valueLines) ? valueLines.length : 1);
+
+            const lineCountForHeight = isLpaLabel ? Math.max(2, valueLineCount) : 1;
+            const effectiveRowHeight = isLpaLabel ? Math.max(rowHeight, 14 + lineCountForHeight * 10 + 8) : rowHeight;
+
+            doc.rect(x, curY, colWidth, effectiveRowHeight);
+
+            const firstLineY = curY + 14;
+            doc.setFont(undefined, 'bold');
+            if (isLpaLabel) {
+              doc.text(labelLines[0], labelX, firstLineY);
+              doc.text(labelLines[1], labelX, firstLineY + 10);
+            } else {
+              doc.text(labelLines[0], labelX, firstLineY);
+            }
+
+            doc.setFont(undefined, 'normal');
+            if (isLpaLabel) {
+              const linesToDraw = (Array.isArray(valueLines) ? valueLines : [String(valueLines)]).slice(0, 2);
+              linesToDraw.forEach((ln, i) => doc.text(String(ln), valueX, firstLineY + i * 10));
+            } else {
+              doc.text(String(valueLines[0] ?? ''), valueX, firstLineY);
+            }
+
+            curY += effectiveRowHeight;
           });
+          return curY;
         };
         
         const tableTop = y + 8;
-        drawCol(marginX, tableTop, leftRows);
-        drawCol(marginX + colWidth + gap, tableTop, rightRows);
-        y = tableTop + rowsPerCol * rowHeight + 22;
+        const leftEndY = drawCol(marginX, tableTop, leftRows);
+        const rightEndY = drawCol(marginX + colWidth + gap, tableTop, rightRows);
+        y = Math.max(leftEndY, rightEndY) + 22;
       }
 
+    }catch (error){
+console.log('working point not loaded', error);
+
+    }
       // Add dimensions section
       try {
         // Determine which dimensions set to use (axial types or centrifugal NBR variants)
@@ -1942,8 +2033,8 @@ const FlowSearch = () => {
         //   if (((axialType === 'NEID') || (typeKeyForPdf === 'NBR') || (typeKeyForPdf === 'NBR_D') || (typeKeyForPdf === 'NBS_D') || (typeKeyForPdf === 'NPD')) && dims.variants) {
         //     // Filter variants based on selected series
         //     const filteredVariants = dims.variants.filter(variant => {
-        //       if (series === 'NBR-D FAN SECTION TYPE' || series === 'NBS-D FAN SECTION TYPE') {
-        //         return variant.name.includes('Fan Section Type');
+        //       if (series === 'NBR-D ' || series === 'NBS-D ') {
+        //         return variant.name.includes('');
         //       }
         //       if (series === 'NBR-D' || series === 'NBS-D') {
         //         return variant.name.includes('Dimensions'); // Show only Dimensions variant for NBR-D/NBS-D
@@ -2367,7 +2458,7 @@ const FlowSearch = () => {
             dims.variants
           ) {
             const filteredVariants = dims.variants.filter(variant => {
-              if (series === 'NBR-D FAN SECTION TYPE (NBC)' || series === 'NBS-D FAN SECTION TYPE (NBC)') return variant.name.includes('Fan Section Type');
+              if (isNbcDidwSeries) return true;
               if (series === 'NBR-D' || series === 'NBS-D') return variant.name.includes('Dimensions');
               if (axialType === 'NEID') {
                 // Do not filter NEID variants by model name; include all and pick row per variant later
@@ -2376,11 +2467,18 @@ const FlowSearch = () => {
               return true;
             });
 
-            for (const variant of filteredVariants) {
-              if (y + 250 > pageHeight - 40) { doc.addPage(); y = 40; }
+            for (let variantIndex = 0; variantIndex < filteredVariants.length; variantIndex++) {
+              const variant = filteredVariants[variantIndex];
+              if (isNbcDidwSeries && variantIndex > 0) {
+                doc.addPage();
+                y = 40;
+              } else if (y + 250 > pageHeight - 40) {
+                doc.addPage();
+                y = 40;
+              }
               doc.setFontSize(12);
               doc.setTextColor('#1e3a8a');
-              doc.text(variant.name, 40, y);
+              doc.text(isNbcDidwSeries ? nbcDidwSectionTitle : variant.name, 40, y);
               y += 15;
 
               const dataSectionTop = y;
@@ -2467,49 +2565,66 @@ const FlowSearch = () => {
         console.log('Dimensions (post-charts) not loaded:', error);
       }
 
-      // Add Wire image at the end of Technical Submittal (for any model/type)
-      try {
-        const wireImageBase64 = await loadImageAsBase64(wireImg);
-        const wireFormat =
-          typeof wireImageBase64 === 'string' && wireImageBase64.startsWith('data:image/jpeg')
-            ? 'JPEG'
-            : 'PNG';
+      // Wiring diagrams at end of Technical Submittal (wireImg1 then wireImg2)
+      const wireSources = [wireImg1, wireImg2];
+      let wiringHeaderDrawn = false;
+      for (let wi = 0; wi < wireSources.length; wi++) {
+        const wireSrc = wireSources[wi];
+        try {
+          const wireImageBase64 = await loadImageAsBase64(wireSrc);
+          const wireFormat =
+            typeof wireImageBase64 === 'string' && wireImageBase64.startsWith('data:image/jpeg')
+              ? 'JPEG'
+              : 'PNG';
 
-        const img = new Image();
-        img.src = wireImageBase64;
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-          setTimeout(() => reject(new Error('Wire image load timeout')), 5000);
-        });
+          const img = new Image();
+          img.src = wireImageBase64;
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            setTimeout(() => reject(new Error('Wire image load timeout')), 5000);
+          });
 
-        const naturalW = img.naturalWidth || 600;
-        const naturalH = img.naturalHeight || 400;
-        const maxW = pageWidth - 80;
-        const maxH = 280;
-        const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
-        const imgW = Math.max(1, Math.round(naturalW * scale));
-        const imgH = Math.max(1, Math.round(naturalH * scale));
+          const naturalW = img.naturalWidth || 600;
+          const naturalH = img.naturalHeight || 400;
+          const wireSideMargin = 40;
+          const maxW = pageWidth - 2 * wireSideMargin;
+          const maxH = 500;
+          const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
+          const imgW = Math.max(1, Math.round(naturalW * scale));
+          const imgH = Math.max(1, Math.round(naturalH * scale));
 
-        if (y + imgH + 60 > pageHeight - 40) {
-          doc.addPage();
-          y = 40;
+          const headerBlock = wiringHeaderDrawn ? 12 : 28;
+          if (y + imgH + 50 + headerBlock > pageHeight - 40) {
+            doc.addPage();
+            y = 40;
+          }
+
+          if (!wiringHeaderDrawn) {
+            doc.setFontSize(13);
+            doc.setTextColor('#1e3a8a');
+            doc.text('Wiring', 40 , y);
+            y += 20;
+            wiringHeaderDrawn = true;
+          } else {
+            y += 12;
+          }
+
+          if (y + imgH > pageHeight - 40) {
+            doc.addPage();
+            y = 40;
+          }
+
+          const imageX = wireSideMargin + Math.max(0, Math.floor((maxW - imgW) / 2));
+          const imageY = y;
+          doc.addImage(wireImageBase64, wireFormat, imageX, imageY, imgW, imgH);
+          y = imageY + imgH + 22;
+        } catch (wireErr) {
+          console.warn(`Wiring image ${wi + 1} not available in PDF:`, wireErr);
         }
-
-        doc.setFontSize(13);
-        doc.setTextColor('#1e3a8a');
-        doc.text('Wiring', 60, y, { align: 'center' });
-        y += 16;
-
-        const imageX = 40 + Math.max(0, Math.floor((maxW - imgW) / 2));
-        const imageY = y;
-        doc.addImage(wireImageBase64, wireFormat, imageX, imageY, imgW, imgH);
-        y = imageY + imgH + 18;
-      } catch (wireErr) {
-        console.warn('Wiring image not available in PDF:', wireErr);
       }
 
-      doc.save(`technical-submittal-${selectedModel || 'selection'}.pdf`);
+      doc.save(`${axialType || series } - ${selectedModel || 'selection'}.pdf`);
       setShowPdfModal(false);
     } catch (error) {
       console.error('PDF generation error:', error);
@@ -2523,6 +2638,8 @@ const FlowSearch = () => {
     if (fanCategory === 'axial') {
       // Map special UI-only axial types to real dimension keys
       if (axialType === 'HIGH_RANGE') return 'NEIDS';
+      if (axialType === 'NEIDS1') return 'NEIDS';
+      if (axialType === 'NEIDS3') return 'NEID_FR2';
       if (axialType === 'NETD_FR') return 'NETD';
       return axialType || null;
     }
@@ -2530,8 +2647,8 @@ const FlowSearch = () => {
       if (String(series) === 'NBR') return 'NBR';
       if (String(series) === 'NBS') return 'NBS';
       if (String(series) === 'NBRS') return 'NBRS';
-      if (series === 'NBR-D' || series === 'NBR_D' || series === 'NBR-D FAN SECTION TYPE (NBC)') return 'NBR_D';
-      if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D FAN SECTION TYPE (NBC)') return 'NBS_D';
+      if (series === 'NBR-D' || series === 'NBR_D' || series === 'NBR-D (NBC)') return 'NBR_D';
+      if (series === 'NBS-D' || series === 'NBS_D' || series === 'NBS-D (NBC)' || series === 'NBS-D  (NBC)') return 'NBS_D';
       if (String(series) === 'NPD') return 'NPD';
       if (String(series) === 'NPE') return 'NPE';
       if (String(series) === 'NPF') return 'NPF';
@@ -2542,6 +2659,9 @@ const FlowSearch = () => {
   const getCurrentDimensionsData = () => {
     const typeKey = getCurrentDimensionsType();
     if (!typeKey || !selected?.model?.name) return null;
+    if (axialType === 'NEIDS3') {
+      return dimensionsData['NEID_FR2'] || null;
+    }
     // For types with multiple variants (e.g., NEID, NBR, NBS, NBRS, NBR-D, NBS-D, NPD, NPE, NPF), return the full type with variants
     if (
       typeKey === 'NBR' ||
@@ -2915,11 +3035,19 @@ const FlowSearch = () => {
 
         {apiResults.length > 0 && (() => {
           const filteredResults = filterResultsByAxialModelRange(apiResults);
+          const lpaValues = filteredResults
+            .map((result) => Number(result?.closestPoint?.lpa))
+            .filter((value) => Number.isFinite(value));
+          const minLpa = lpaValues.length > 0 ? Math.min(...lpaValues) : null;
+          const brakePowers = filteredResults
+            .map((result) => Number(result?.closestPoint?.brakePower))
+            .filter((value) => Number.isFinite(value));
+          const minBrakePower = brakePowers.length > 0 ? Math.min(...brakePowers) : null;
 
           // Show message if no results after filtering
           if (filteredResults.length === 0) {
             let message = '';
-            if (fanCategory === 'axial' && axialType === 'NEIDS') {
+            if (fanCategory === 'axial' && isNeidsFamily) {
               message = 'No results.';
             } else if (fanCategory === 'axial' && axialType === 'NEID') {
               message = 'No results.';
@@ -2942,7 +3070,27 @@ const FlowSearch = () => {
           return (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className="space-y-8">
               <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Results</h3>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h3 className="text-xl font-semibold text-[#1E3A8A]">Results</h3>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="inline-flex items-center gap-1 text-[#334155]">
+                      <span className="w-3 h-3 rounded border-2 border-orange-500"></span>
+                      Lowest LPA
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[#334155]">
+                      <span className="w-3 h-3 rounded border-2 border-green-500"></span>
+                      Lowest Brake Power
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[#334155]">
+                      <span className="w-3 h-3 rounded bg-blue-700"></span>
+                      Lowest LPA + BP
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[#334155]">
+                      <span className="w-3 h-3 rounded border-2 border-[#93C5FD]"></span>
+                      Selected
+                    </span>
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {filteredResults.map((r, idx) => {
                     // Find original index in apiResults for proper selection handling
@@ -2950,12 +3098,34 @@ const FlowSearch = () => {
                     const rpmId = r?.rpm?._id;
                     const isLoading = loadingPoints[rpmId];
                     const hasPoints = modelPoints[rpmId]?.length > 0;
+                    const resultLpa = Number(r?.closestPoint?.lpa);
+                    const hasLowestLpa = Number.isFinite(resultLpa) && minLpa !== null && resultLpa === minLpa;
+                    const resultBrakePower = Number(r?.closestPoint?.brakePower);
+                    const hasLowestBrakePower = Number.isFinite(resultBrakePower) && minBrakePower !== null && resultBrakePower === minBrakePower;
+                    const isLowestBoth = hasLowestLpa && hasLowestBrakePower;
                     
                     return (
                       <button 
                         key={originalIdx} 
                         onClick={() => handleModelSelect(originalIdx)} 
-                        className={`text-left p-3 rounded border transition-all ${selectedIndex===originalIdx ? 'border-[#93C5FD] ring-2 ring-[#93C5FD]' : 'border-[#E5EDFF]'}`}
+                        className={`text-left p-3 rounded border-3 transition-all ${
+                          selectedIndex===originalIdx
+                            ? isLowestBoth
+                              ? 'ring-2 ring-blue-700 border-blue-700 '
+                              : hasLowestLpa
+                              ? 'border-orange-500 ring-2 ring-orange-500'
+                              : hasLowestBrakePower
+                                ? 'border-green-500 ring-2 ring-green-500'
+                              : 'border-[#93C5FD] ring-2 ring-[#93C5FD]'
+                            : isLowestBoth
+                              ? 'border-blue-700'
+                              : hasLowestLpa
+                              ? 'border-orange-500 '
+                              : hasLowestBrakePower
+                                ? 'border-green-500'
+                              : 'border-[#E5EDFF]'
+                        }`}
+                      
                       >
                         <div className="text-[#1E3A8A] font-medium">
                           Model: {(fanCategory === 'axial' ? getAxialTypeDisplayCode(axialType) : series) || ''} - {r.model?.name}
@@ -2970,7 +3140,7 @@ const FlowSearch = () => {
                           ) : hasPoints ? (
                             <div className="text-xs text-green-600 flex items-center gap-1">
                               <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                              Curve loaded
+                             loaded
                             </div>
                           ) : selectedIndex === originalIdx ? (
                             <div className="text-xs text-[#64748B]">Click to load curve</div>
@@ -3216,9 +3386,7 @@ const FlowSearch = () => {
                       ) {
                         // Filter variants based on selected series
                         const filteredVariants = dimensionsData.variants.filter(variant => {
-                          if (series === 'NBR-D FAN SECTION TYPE (NBC)' || series === 'NBS-D FAN SECTION TYPE (NBC)') {
-                            return variant.name.includes('Fan Section Type');
-                          }
+                          if (isNbcDidwSeries) return true;
                           if (series === 'NBR-D' || series === 'NBS-D') {
                             return variant.name.includes('Dimensions'); // Show only Dimensions variant for NBR-D/NBS-D
                           }
@@ -3248,7 +3416,9 @@ const FlowSearch = () => {
                                 <div key={variantIndex} className="space-y-4">
                                   {/* Variant Title and Content */}
                                   <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                                    <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">{variant.name}</h3>
+                                    <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">
+                                      {isNbcDidwSeries ? nbcDidwSectionTitle : variant.name}
+                                    </h3>
                                     
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                       {/* Image */}
@@ -3256,7 +3426,7 @@ const FlowSearch = () => {
                                         <div className="flex justify-center">
                                           <ProgressiveImage 
                                             src={resolveUiImage(variant.image)} 
-                                            alt={variant.name}
+                                            alt={isNbcDidwSeries ? nbcDidwSectionTitle : variant.name}
                                             className="max-w-full h-auto max-h-96 object-cover"
                                             loading="lazy"
                                             decoding="async"
@@ -3302,19 +3472,15 @@ const FlowSearch = () => {
 
                       // Regular handling for other types
                       const selectedModelData = Array.isArray(dimensionsData.data)
-                        ? (() => {
-                            const modelName = selected?.model?.name || '';
-                            const key = getBaseModelNumber(modelName) || modelName;
-                            return dimensionsData.data.find(row => {
-                              const rowModel = String(row?.model || '');
-                              return rowModel === key || rowModel.includes(key) || key.includes(rowModel);
-                            });
-                          })()
+                        ? findDimensionsRowMatch(dimensionsData.data, selected?.model?.name || '')
                         : null;
 
-                      const dimensionsDisplayName = axialType === 'NETD_FR'
-                        ? 'Axial wall mounted (Fire Rated) (NETD) (400°C / 2hrs)'
-                        : dimensionsData.name;
+                      const dimensionsDisplayName =
+                        ['NEIDS1', 'NEIDS', 'NEIDS3'].includes(axialType)
+                          ? getAxialTypeDisplayName(axialType)
+                          : (axialType === 'NETD_FR'
+                            ? 'Axial wall mounted (Fire Rated) (NETD) (400°C / 2hrs)'
+                            : dimensionsData.name);
 
                       return (
                         <div className="space-y-6">
@@ -3450,14 +3616,26 @@ const FlowSearch = () => {
                      
                         <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
                           <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Wiring</h3>
-                          <div className="h-[500px]">
-                          <ProgressiveImage 
-                                            src={wireImg} 
+                          <div className="h-auto flex justify-center items-center">
+                           <div className='h-[600px] w-1/2'>
+                               <ProgressiveImage 
+                                            src={wireImg1} 
                                             alt={'wired'}
-                                            className="max-w-full h-auto h-full object-cover"
+                                            className="max-w-full h-full object-cover"
                                             loading="lazy"
                                             decoding="async"
                                           />
+                          </div>
+                          <div className='h-[600px] w-1/2'>
+                          <ProgressiveImage 
+                                            src={wireImg2} 
+                                            alt={'wired'}
+                                            className="max-w-full h-full object-cover"
+                                            loading="lazy"
+                                            decoding="async"
+                                          />
+                          </div>
+                                        
                           </div>
                         </div>
                      
