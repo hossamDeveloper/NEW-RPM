@@ -36,6 +36,22 @@ ChartJS.register(
   annotationPlugin
 );
 
+const FILTER_MODULE_OPTIONS = [
+  { value: 'PRE_FILTER', label: 'Pre filter', pressureAddPa: 75 },
+  {
+    value: 'ST_BAG',
+    label: 'Sand trap, pre filter, bag filter',
+    pressureAddPa: 350,
+    image: '/src/assets/dimensions/ST.jpg',
+  },
+  {
+    value: 'ST_BAG_HEPA',
+    label: 'Sand trap, pre filter, bag filter, hepa filter',
+    pressureAddPa: 1000,
+    image: '/src/assets/dimensions/TF.jpg',
+  },
+];
+
 const FlowSearch = () => {
   const [searchData, setSearchData] = useState({
     flowRate: '',
@@ -78,10 +94,12 @@ const FlowSearch = () => {
   const [pressureClass, setPressureClass] = useState(''); // low | medium | high
   const [lowConfig, setLowConfig] = useState(''); // sisw | didw (for low)
   const [series, setSeries] = useState(''); // NBR, NBS, NBRS, NC, NBXI, NBR-D, NBS-D, NPD, NPE, NPF
+  const [filterModule, setFilterModule] = useState('PRE_FILTER');
 
   // Chart refs for exporting images
   const pressureChartRef = useRef(null);
   const staticPressureChartRef = useRef(null);
+  const baseStaticPressureRef = useRef('');
   const powerChartRef = useRef(null);
   const efficiencyChartRef = useRef(null);
 
@@ -331,6 +349,9 @@ const FlowSearch = () => {
     if (name === 'staticPressure' && axialType === 'NEI2D') {
       return; // locked for NEI2D
     }
+    if (name === 'staticPressure') {
+      baseStaticPressureRef.current = value;
+    }
     setHasSearched(false);
     setSearchData(prev => ({ ...prev, [name]: value }));
   };
@@ -378,6 +399,16 @@ const FlowSearch = () => {
       default: return x;
     }
   };
+
+  const getFilterModuleOption = () =>
+    FILTER_MODULE_OPTIONS.find((o) => o.value === filterModule) || FILTER_MODULE_OPTIONS[0];
+
+  const formatStaticPressureDisplay = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '';
+    return String(Number(n.toFixed(6)));
+  };
+
   const handleFlowUnitChange = (e) => {
     const newUnit = e.target.value;
     if (searchData.flowRate === '' || searchData.flowRate === null) { setFlowUnit(newUnit); return; }
@@ -392,6 +423,7 @@ const FlowSearch = () => {
     if (searchData.staticPressure === '' || searchData.staticPressure === null) { setPressureUnit(newUnit); return; }
     const si = convertPressureToPa(searchData.staticPressure, pressureUnit);
     const converted = convertPressureFromPa(si, newUnit);
+    baseStaticPressureRef.current = String(converted);
     setSearchData(prev => ({ ...prev, staticPressure: String(converted) }));
     setPressureUnit(newUnit);
     
@@ -399,6 +431,24 @@ const FlowSearch = () => {
 
   const isJetFan = axialType === 'NEI2D';
   const isNeidsFamily = ['NEIDS1', 'NEIDS', 'NEIDS3'].includes(axialType);
+
+  const getBaseStaticPressureForFilter = () => {
+    if (isJetFan) return 10;
+    const fromRef = baseStaticPressureRef.current;
+    if (fromRef !== '' && fromRef != null) {
+      const parsed = Number(fromRef);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    const parsed = Number(searchData.staticPressure);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  };
+
+  const getEffectiveStaticPressureForSearch = () => {
+    const raw = getBaseStaticPressureForFilter();
+    if (!Number.isFinite(raw)) return raw;
+    const totalPa = convertPressureToPa(raw, pressureUnit) + getFilterModuleOption().pressureAddPa;
+    return convertPressureFromPa(totalPa, pressureUnit);
+  };
 
   // Map special axial types to the effective backend type (for API payloads, dimensions, etc.)
   const getEffectiveAxialType = () => {
@@ -443,6 +493,7 @@ const FlowSearch = () => {
     setHasSearched(false);
     setAxialType(code);
     if (code === 'NEI2D') {
+      baseStaticPressureRef.current = '10';
       setSearchData(prev => ({ ...prev, staticPressure: '10' }));
       setPressureUnit('Pa');
     }
@@ -730,10 +781,17 @@ const FlowSearch = () => {
       return;
     }
 
+    const effectiveStaticPressure = getEffectiveStaticPressureForSearch();
+    const effectiveStaticPressureDisplay = formatStaticPressureDisplay(effectiveStaticPressure);
+    setSearchData((prev) => ({
+      ...prev,
+      staticPressure: effectiveStaticPressureDisplay,
+    }));
+
     const payload = {
       flowRate: Number(searchData.flowRate),
       flowRateUnit: flowUnit,
-      staticPressure: Number(isJetFan ? 10 : searchData.staticPressure),
+      staticPressure: Number(effectiveStaticPressure),
       staticPressureUnit: pressureUnit,
       modelType: fanCategory
     };
@@ -1748,6 +1806,7 @@ const FlowSearch = () => {
           `Centrifugal Type: ${series || '-'}`,
         ] : []),
         `Drive Type: ${driveType || '-'}`,
+        `Filters Module: ${getFilterModuleOption().label}`,
         `Model: ${selectedModel || '-'}`,
       ];
       const infoStartY = y;
@@ -1843,7 +1902,7 @@ const FlowSearch = () => {
         doc.setTextColor('#334155');
         const wpRows = [
           ['Flow Rate', `${searchData.flowRate} ${getFlowUnitLabel()}`],
-          ['Static Pressure', `${searchData.staticPressure} ${getPressureUnitLabel()}`],
+          ['Static Pressure', `${formatStaticPressureDisplay(searchData.staticPressure)} ${getPressureUnitLabel()}`],
         
          
         ];
@@ -2565,6 +2624,46 @@ console.log('working point not loaded', error);
         console.log('Dimensions (post-charts) not loaded:', error);
       }
 
+      const filterModuleImagePath = getFilterModuleOption().image;
+      if (filterModuleImagePath) {
+        try {
+          const resolvedFilterUrl = resolveAnyImage(filterModuleImagePath) || filterModuleImagePath;
+          const filterImageBase64 = await loadImageAsBase64(resolvedFilterUrl);
+          const filterFormat =
+            typeof filterImageBase64 === 'string' && filterImageBase64.startsWith('data:image/jpeg')
+              ? 'JPEG'
+              : 'PNG';
+          const filterImg = new Image();
+          filterImg.src = filterImageBase64;
+          await new Promise((resolve, reject) => {
+            filterImg.onload = resolve;
+            filterImg.onerror = reject;
+            setTimeout(() => reject(new Error('Filter module image load timeout')), 5000);
+          });
+          const naturalW = filterImg.naturalWidth || 600;
+          const naturalH = filterImg.naturalHeight || 400;
+          const sideMargin = 40;
+          const maxW = pageWidth - 2 * sideMargin;
+          const maxH = 420;
+          const scale = Math.min(maxW / naturalW, maxH / naturalH, 1);
+          const imgW = Math.max(1, Math.round(naturalW * scale));
+          const imgH = Math.max(1, Math.round(naturalH * scale));
+          if (y + imgH + 50 > pageHeight - 40) {
+            doc.addPage();
+            y = 40;
+          }
+          doc.setFontSize(13);
+          doc.setTextColor('#1e3a8a');
+          doc.text('Filter Module', 40, y);
+          y += 20;
+          const imageX = sideMargin + Math.max(0, Math.floor((maxW - imgW) / 2));
+          doc.addImage(filterImageBase64, filterFormat, imageX, y, imgW, imgH);
+          y += imgH + 22;
+        } catch (filterErr) {
+          console.warn('Filter module image not available in PDF:', filterErr);
+        }
+      }
+
       // Wiring diagrams at end of Technical Submittal (wireImg1 then wireImg2)
       const wireSources = [wireImg1, wireImg2];
       let wiringHeaderDrawn = false;
@@ -2870,6 +2969,40 @@ console.log('working point not loaded', error);
                   )}
                 </div>
               )}
+              {fanCategory && (
+                <div className="mt-4">
+                  <label className="block text-[#1F3B73] text-base font-bold mb-2">Filters Module</label>
+                  <div className="space-y-2 rounded-xl border border-[#C7DAFF] bg-white p-3">
+                    {FILTER_MODULE_OPTIONS.map((option) => (
+                      <label
+                        key={option.value}
+                        className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition ${
+                          filterModule === option.value
+                            ? 'border-[#93C5FD] bg-[#F8FAFF] ring-1 ring-[#93C5FD]'
+                            : 'border-[#E5EDFF] hover:border-[#C7DAFF]'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="filterModule"
+                          value={option.value}
+                          checked={filterModule === option.value}
+                          onChange={() => {
+                            setHasSearched(false);
+                            setApiResults([]);
+                            setModelPoints({});
+                            setLoadingPoints({});
+                            setSelectedIndex(0);
+                            setFilterModule(option.value);
+                          }}
+                          className="mt-1 h-4 w-4 shrink-0 accent-[#1E3A8A]"
+                        />
+                        <span className="text-sm font-medium text-[#1F3B73]">{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {fanCategory === 'axial' && (
@@ -3038,7 +3171,7 @@ console.log('working point not loaded', error);
               <div>
                 <label className="block text-[#1F3B73] text-base font-bold mb-2">Static Pressure</label>
                 <div className="flex gap-2">
-                  <input type="number" step="any" name="staticPressure" value={isJetFan ? '10' : searchData.staticPressure} onChange={(e)=>{ searchMutation.reset(); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} disabled={isJetFan} readOnly={isJetFan} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter static pressure" />
+                  <input type="number" step="any" name="staticPressure" value={isJetFan ? (searchData.staticPressure || '10') : searchData.staticPressure} onChange={(e)=>{ searchMutation.reset(); setApiResults([]); setModelPoints({}); setLoadingPoints({}); setSelectedIndex(0); handleInputChange(e); }} disabled={isJetFan} readOnly={isJetFan} className="w-full px-4 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] placeholder-[#9DB7EE] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:border-transparent transition-all" placeholder="Enter static pressure" />
                   <select value={pressureUnit} onChange={handlePressureUnitChange} disabled={isJetFan} className="px-3 py-3 rounded-xl bg-white border border-[#C7DAFF] text-[#1F3B73] focus:outline-none">
                     <option value="Pa">Pa</option>
                     <option value="InWc">InWc</option>
@@ -3586,6 +3719,21 @@ console.log('working point not loaded', error);
                         </div>
                       );
                     })()}
+
+                    {getFilterModuleOption().image && selected?.model && (
+                      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
+                        <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Filter Module</h3>
+                        <div className="flex justify-center">
+                          <ProgressiveImage
+                            src={resolveUiImage(getFilterModuleOption().image)}
+                            alt="Filter Module"
+                            className="max-w-full h-auto max-h-96 object-contain"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        </div>
+                      </div>
+                    )}
                     
                     {/* Hidden Charts for PDF Export - render only when modal is open */}
                     {showPdfModal && (
