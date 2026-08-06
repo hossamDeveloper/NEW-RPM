@@ -341,6 +341,14 @@ const FlowSearch = () => {
     }
   }, [fanCategory, series]);
 
+  useEffect(() => {
+    const isNbc =
+      series === 'NBR-D (NBC)' || series === 'NBS-D (NBC)' || series === 'NBS-D  (NBC)';
+    if (!isNbc && filterModule !== 'PRE_FILTER') {
+      setFilterModule('PRE_FILTER');
+    }
+  }, [series, filterModule]);
+
   // From store we only need diameter for any client-side calc (not used now for API)
   const { diameter } = useSelector((state) => state.flow);
 
@@ -446,6 +454,9 @@ const FlowSearch = () => {
   const getEffectiveStaticPressureForSearch = () => {
     const raw = getBaseStaticPressureForFilter();
     if (!Number.isFinite(raw)) return raw;
+    const isNbcFilterModuleSeries =
+      series === 'NBR-D (NBC)' || series === 'NBS-D (NBC)' || series === 'NBS-D  (NBC)';
+    if (!isNbcFilterModuleSeries) return raw;
     const totalPa = convertPressureToPa(raw, pressureUnit) + getFilterModuleOption().pressureAddPa;
     return convertPressureFromPa(totalPa, pressureUnit);
   };
@@ -782,16 +793,21 @@ const FlowSearch = () => {
     }
 
     const effectiveStaticPressure = getEffectiveStaticPressureForSearch();
-    const effectiveStaticPressureDisplay = formatStaticPressureDisplay(effectiveStaticPressure);
-    setSearchData((prev) => ({
-      ...prev,
-      staticPressure: effectiveStaticPressureDisplay,
-    }));
+    if (isNbcDidwSeries) {
+      setSearchData((prev) => ({
+        ...prev,
+        staticPressure: formatStaticPressureDisplay(effectiveStaticPressure),
+      }));
+    }
 
     const payload = {
       flowRate: Number(searchData.flowRate),
       flowRateUnit: flowUnit,
-      staticPressure: Number(effectiveStaticPressure),
+      staticPressure: Number(
+        isNbcDidwSeries
+          ? effectiveStaticPressure
+          : (isJetFan ? 10 : searchData.staticPressure)
+      ),
       staticPressureUnit: pressureUnit,
       modelType: fanCategory
     };
@@ -1806,7 +1822,7 @@ const FlowSearch = () => {
           `Centrifugal Type: ${series || '-'}`,
         ] : []),
         `Drive Type: ${driveType || '-'}`,
-        `Filters Module: ${getFilterModuleOption().label}`,
+        ...(isNbcDidwSeries ? [`Filters Module: ${getFilterModuleOption().label}`] : []),
         `Model: ${selectedModel || '-'}`,
       ];
       const infoStartY = y;
@@ -2624,7 +2640,7 @@ console.log('working point not loaded', error);
         console.log('Dimensions (post-charts) not loaded:', error);
       }
 
-      const filterModuleImagePath = getFilterModuleOption().image;
+      const filterModuleImagePath = isNbcDidwSeries ? getFilterModuleOption().image : null;
       if (filterModuleImagePath) {
         try {
           const resolvedFilterUrl = resolveAnyImage(filterModuleImagePath) || filterModuleImagePath;
@@ -2969,7 +2985,7 @@ console.log('working point not loaded', error);
                   )}
                 </div>
               )}
-              {fanCategory && (
+              {isNbcDidwSeries && (
                 <div className="mt-4">
                   <label className="block text-[#1F3B73] text-base font-bold mb-2">Filters Module</label>
                   <div className="space-y-2 rounded-xl border border-[#C7DAFF] bg-white p-3">
@@ -3720,7 +3736,7 @@ console.log('working point not loaded', error);
                       );
                     })()}
 
-                    {getFilterModuleOption().image && selected?.model && (
+                    {isNbcDidwSeries && getFilterModuleOption().image && selected?.model && (
                       <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
                         <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Filter Module</h3>
                         <div className="flex justify-center">
