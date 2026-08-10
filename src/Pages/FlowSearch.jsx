@@ -3604,7 +3604,7 @@ console.log('working point not loaded', error);
                                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                       {/* Image */}
                                       {variant.image && (
-                                        <div className="flex justify-center">
+                                        <div className="flex flex-col items-center gap-4">
                                           <ProgressiveImage 
                                             src={resolveUiImage(variant.image)} 
                                             alt={isNbcDidwSeries ? nbcDidwSectionTitle : variant.name}
@@ -3612,6 +3612,20 @@ console.log('working point not loaded', error);
                                             loading="lazy"
                                             decoding="async"
                                           />
+                                          {variantIndex === 0 && isNbcDidwSeries && getFilterModuleOption().image && selected?.model && (
+                                            <div className="w-full">
+                                              <div className="text-sm font-medium text-[#64748B] mb-2 text-center">Filter Module</div>
+                                              <div className="flex justify-center">
+                                                <ProgressiveImage
+                                                  src={resolveUiImage(getFilterModuleOption().image)}
+                                                  alt="Filter Module"
+                                                  className="max-w-full h-auto max-h-100 object-contain"
+                                                  loading="lazy"
+                                                  decoding="async"
+                                                />
+                                              </div>
+                                            </div>
+                                          )}
                                         </div>
                                       )}
                                       
@@ -3669,7 +3683,7 @@ console.log('working point not loaded', error);
                           {dimensionsData.image && (
                             <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
                               <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">{dimensionsDisplayName}</h3>
-                              <div className="flex justify-center">
+                              <div className="flex flex-col items-center gap-4">
                                 <ProgressiveImage 
                                   src={resolveUiImage(dimensionsData.image)} 
                                   alt={dimensionsDisplayName}
@@ -3677,6 +3691,20 @@ console.log('working point not loaded', error);
                                   loading="lazy"
                                   decoding="async"
                                 />
+                                {isNbcDidwSeries && getFilterModuleOption().image && selected?.model && (
+                                  <div className="w-full">
+                                    <div className="text-sm font-medium text-[#64748B] mb-2 text-center">Filter Module</div>
+                                    <div className="flex justify-center">
+                                      <ProgressiveImage
+                                        src={resolveUiImage(getFilterModuleOption().image)}
+                                        alt="Filter Module"
+                                        className="max-w-full h-auto max-h-80 object-contain"
+                                        loading="lazy"
+                                        decoding="async"
+                                      />
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           )}
@@ -3732,25 +3760,11 @@ console.log('working point not loaded', error);
                               </div>
                             </div>
                           )}
+                          
                         </div>
                       );
                     })()}
 
-                    {isNbcDidwSeries && getFilterModuleOption().image && selected?.model && (
-                      <div className="bg-white rounded-2xl p-6 shadow-sm border border-[#E5EDFF]">
-                        <h3 className="text-xl font-semibold text-[#1E3A8A] mb-4">Filter Module</h3>
-                        <div className="flex justify-center">
-                          <ProgressiveImage
-                            src={resolveUiImage(getFilterModuleOption().image)}
-                            alt="Filter Module"
-                            className="max-w-full h-auto max-h-96 object-contain"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        </div>
-                      </div>
-                    )}
-                    
                     {/* Hidden Charts for PDF Export - render only when modal is open */}
                     {showPdfModal && (
                     <div style={{ position: 'absolute', left: '-10000px', top: 0, width: '900px', height: '500px', opacity: 0, pointerEvents: 'none' }}>
