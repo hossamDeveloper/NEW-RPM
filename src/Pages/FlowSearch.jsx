@@ -654,8 +654,9 @@ const FlowSearch = () => {
             };
           });
         }
-        setApiResults(results);
-        console.log(results);
+        const orderedResults = sortResultsByModelName(results);
+        setApiResults(orderedResults);
+        console.log(orderedResults);
         
         setSelectedIndex(0);
         setError('');
@@ -941,18 +942,49 @@ const FlowSearch = () => {
     return m ? m[1] : '';
   };
 
+  const sortResultsByModelName = (results) => {
+    if (!Array.isArray(results)) return [];
+
+    const letterPriority = { H: 0, M: 1, L: 2 };
+
+    return [...results].sort((a, b) => {
+      const modelA = String(a?.model?.name || a?.name || '');
+      const modelB = String(b?.model?.name || b?.name || '');
+
+      const numberA = Number((modelA.match(/(\d{2,5})/) || [])[1] || Number.MAX_SAFE_INTEGER);
+      const numberB = Number((modelB.match(/(\d{2,5})/) || [])[1] || Number.MAX_SAFE_INTEGER);
+
+      const suffixA = Number((modelA.match(/[A-Z]\s*(\d+)/i) || [])[1] || Number.MAX_SAFE_INTEGER);
+      const suffixB = Number((modelB.match(/[A-Z]\s*(\d+)/i) || [])[1] || Number.MAX_SAFE_INTEGER);
+
+      const letterA = (modelA.match(/\b([A-Z])\s*(?=\d)/i) || [])[1]?.toUpperCase() || '';
+      const letterB = (modelB.match(/\b([A-Z])\s*(?=\d)/i) || [])[1]?.toUpperCase() || '';
+
+      const priorityA = letterPriority[letterA] ?? 99;
+      const priorityB = letterPriority[letterB] ?? 99;
+
+      if (numberA !== numberB) return numberA - numberB;
+      if (priorityA !== priorityB) return priorityA - priorityB;
+      if (suffixA !== suffixB) return suffixA - suffixB;
+      return modelA.localeCompare(modelB);
+    });
+  };
+
   // Apply model range filters for specific axial types (NEIDS/NEID <= 2240, Range fan > 2240)
   const filterResultsByAxialModelRange = (results) => {
     if (!Array.isArray(results)) return [];
-    if (fanCategory !== 'axial' || !axialType) return results;
+    const baseResults = fanCategory !== 'axial' || !axialType ? results : results;
 
     const shouldFilter =
-      isNeidsFamily ||
-      axialType === 'NEID' ||
-      axialType === 'HIGH_RANGE';
-    if (!shouldFilter) return results;
+      fanCategory === 'axial' &&
+      (
+        isNeidsFamily ||
+        axialType === 'NEID' ||
+        axialType === 'HIGH_RANGE'
+      );
+    if (!shouldFilter) return sortResultsByModelName(baseResults);
 
-    return results.filter((r) => {
+    const filtered = baseResults.filter((r) => {
       const modelName = r?.model?.name || '';
       const modelNumberStr = getBaseModelNumber(modelName);
       const modelNumber = Number(modelNumberStr);
@@ -968,6 +1000,8 @@ const FlowSearch = () => {
       }
       return true;
     });
+
+    return sortResultsByModelName(filtered);
   };
 
   // Robust matcher to find the dimensions row for a given model name across naming variations
