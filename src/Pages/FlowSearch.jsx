@@ -100,6 +100,7 @@ const FlowSearch = () => {
   const pressureChartRef = useRef(null);
   const staticPressureChartRef = useRef(null);
   const baseStaticPressureRef = useRef('');
+  const pendingAutoSelectRef = useRef(false);
   const powerChartRef = useRef(null);
   const efficiencyChartRef = useRef(null);
 
@@ -658,23 +659,13 @@ const FlowSearch = () => {
         setApiResults(orderedResults);
         console.log(orderedResults);
         
-        setSelectedIndex(0);
         setError('');
         setNotification({ type: 'success', message: 'Search created successfully' });
         
         // Clear previous points data when new search is performed
         setModelPoints({});
         setLoadingPoints({});
-        
-        // Automatically load points for the first model
-        if (results.length > 0) {
-          const firstResult = results[0];
-          const rpmId = firstResult?.rpm?._id;
-          if (rpmId) {
-            setLoadingPoints(prev => ({ ...prev, [rpmId]: true }));
-            fetchPointsMutation.mutate(rpmId);
-          }
-        }
+        pendingAutoSelectRef.current = true;
       } else {
         setApiResults([]);
         setNotification({ type: 'error', message: res?.data?.message || 'Search failed' });
@@ -1003,6 +994,26 @@ const FlowSearch = () => {
 
     return sortResultsByModelName(filtered);
   };
+
+  // Auto-select the first visible result and load its curve data after search
+  useEffect(() => {
+    if (!pendingAutoSelectRef.current || apiResults.length === 0) return;
+    pendingAutoSelectRef.current = false;
+
+    const filtered = filterResultsByAxialModelRange(apiResults);
+    if (filtered.length === 0) return;
+
+    const firstVisible = filtered[0];
+    const index = apiResults.findIndex((r) => r === firstVisible);
+    if (index < 0) return;
+
+    setSelectedIndex(index);
+    const rpmId = firstVisible?.rpm?._id;
+    if (rpmId) {
+      setLoadingPoints((prev) => ({ ...prev, [rpmId]: true }));
+      fetchPointsMutation.mutate(rpmId);
+    }
+  }, [apiResults]);
 
   // Robust matcher to find the dimensions row for a given model name across naming variations
   const findDimensionsRowMatch = (rows, modelName) => {
