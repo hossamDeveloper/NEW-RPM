@@ -306,7 +306,7 @@ const FlowSearch = () => {
     return [];
   };
   
-  // Get all possible series for image mapping
+  //  all possible series for image mapping
   const getAllSeriesOptions = () => {
     return [
       'NBR',
