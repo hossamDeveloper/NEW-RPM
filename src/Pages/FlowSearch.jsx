@@ -47,7 +47,7 @@ const FILTER_MODULE_OPTIONS = [
   {
     value: 'ST_BAG_HEPA',
     label: 'Sand trap, pre filter, bag filter, hepa filter',
-    pressureAddPa: 1000,
+    pressureAddPa: 600,
     image: '/src/assets/dimensions/TF.jpg',
   },
 ];
