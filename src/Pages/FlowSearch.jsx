@@ -2581,8 +2581,7 @@ console.log('working point not loaded', error);
               if (isNbcDidwSeries) return true;
               if (series === 'NBR-D' || series === 'NBS-D') return variant.name.includes('Dimensions');
               if (axialType === 'NEID') {
-                // Do not filter NEID variants by model name; include all and pick row per variant later
-                return true;
+                return variant.name !== 'NEID-S';
               }
               return true;
             });
