@@ -2921,7 +2921,7 @@ console.log('working point not loaded', error);
   };
 
   // Progressive Image Component with blur placeholder
-  const ProgressiveImage = ({ src, alt, className, onError, ...props }) => {
+  const ProgressiveImage = ({ src, alt, className, imageClassName, onError, ...props }) => {
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
 
@@ -2935,7 +2935,7 @@ console.log('working point not loaded', error);
     };
 
     return (
-      <div className={`relative overflow-hidden ${className}`}>
+      <div className={`relative ${className}`}>
         {!imageLoaded && !imageError && (
           <div className="absolute inset-0 bg-gray-200 animate-pulse flex items-center justify-center">
             <div className="w-8 h-8 bg-gray-300 rounded-full animate-pulse"></div>
@@ -2944,7 +2944,7 @@ console.log('working point not loaded', error);
         <img
           src={getOptimizedImageSrc(src)}
           alt={alt}
-          className={`transition-opacity object-contain w-full h-full duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+          className={`transition-opacity duration-300 ${imageClassName || 'object-contain w-full h-full'} ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
           onLoad={handleLoad}
           onError={handleError}
           {...props}
@@ -3731,7 +3731,8 @@ console.log('working point not loaded', error);
                                 <ProgressiveImage 
                                   src={resolveUiImage(dimensionsData.image)} 
                                   alt={dimensionsDisplayName}
-                                  className="max-w-full h-auto max-h-96 object-contain"
+                                  className="max-w-full h-auto max-h-96 flex justify-center"
+                                  imageClassName="max-w-full max-h-96 w-auto h-auto object-contain"
                                   loading="lazy"
                                   decoding="async"
                                 />
@@ -3742,7 +3743,8 @@ console.log('working point not loaded', error);
                                       <ProgressiveImage
                                         src={resolveUiImage(getFilterModuleOption().image)}
                                         alt="Filter Module"
-                                        className="max-w-full h-auto max-h-80 object-contain"
+                                        className="max-w-full h-auto max-h-80 flex justify-center"
+                                        imageClassName="max-w-full max-h-80 w-auto h-auto object-contain"
                                         loading="lazy"
                                         decoding="async"
                                       />
