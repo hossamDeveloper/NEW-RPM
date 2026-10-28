@@ -2783,7 +2783,7 @@ console.log('working point not loaded', error);
         }
       }
 
-      doc.save(`${axialType || series } - ${selectedModel || 'selection'}.pdf`);
+      doc.save(`${getAxialTypeDisplayCode(axialType) || series } - ${selectedModel || 'selection'}.pdf`);
       setShowPdfModal(false);
     } catch (error) {
       console.error('PDF generation error:', error);
